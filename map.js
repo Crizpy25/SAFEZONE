@@ -100,7 +100,7 @@ function toggleFire() {
     } else {
         fireLayer.addTo(map);
     }
-}
+}s
 
 function toggleHospital() {
     if (map.hasLayer(hospitalLayer)) {
