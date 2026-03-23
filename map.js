@@ -1,7 +1,7 @@
 const map = L.map('map').setView([10.7202,122.5621],13);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© OpenStreetMap'
+    attribution:'© OpenStreetMap',
 }).addTo(map);
 
 const policeLayer = L.layerGroup().addTo(map);
@@ -46,6 +46,7 @@ const fireStations = [
     ["BFP Jaro", 10.72744065268221, 122.56251218153137],
     ["Ungka Fire Sub-Station", 10.74690941039231, 122.53931659330536],
     ["Old Molo Fire Station", 10.697030999439814, 122.5488881609591],
+    ["San Isidro Fire Sub-Station", 10.736444550002995, 122.5458557423291]
 ];
 const fireIcons = L.icon({
     iconUrl: "images/fire.png",
@@ -70,6 +71,7 @@ const hospitals = [
     ["QualiMed Hospital Iloilo", 10.706542561402188, 122.54782241379408],
     ["Medicus Medical Center", 10.702756754480117, 122.55224702393059],
     ["AMOSUP Seamen's Hospital", 10.714828158629505, 122.53455543124073],
+    
 ];
 
 const hospitalIcon = L.icon({
@@ -100,7 +102,7 @@ function toggleFire() {
     } else {
         fireLayer.addTo(map);
     }
-}s
+}
 
 function toggleHospital() {
     if (map.hasLayer(hospitalLayer)) {
