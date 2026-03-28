@@ -1,7 +1,7 @@
-const map = L.map('map').setView([10.7202,122.5621],13);
+const map = L.map('map').setView([10.7202, 122.5621], 13);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© OpenStreetMap',
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
 }).addTo(map);
 
 const policeLayer = L.layerGroup().addTo(map);
@@ -24,13 +24,13 @@ const policeStations = [
 
 const policeIcon = L.icon({
     iconUrl: "images/police.png",
-    iconSize: [30,30],
-    iconAnchor: [17,35],
-    popupAnchor: [0,-35]
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
 });
 
-policeStations.forEach(function(station){
-    L.marker([station[1],station[2]], {icon: policeIcon})
+policeStations.forEach(function(station) {
+    L.marker([station[1], station[2]], {icon: policeIcon})
     .addTo(policeLayer)
     .bindPopup(station[0]);
 });
@@ -50,13 +50,13 @@ const fireStations = [
 ];
 const fireIcons = L.icon({
     iconUrl: "images/fire.png",
-    iconSize: [30,30],
-    iconAnchor: [17,35],
-    popupAnchor: [0,-35]
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
 });
 
-fireStations.forEach(function(station){
-    L.marker([station[1],station[2]], {icon: fireIcons})
+fireStations.forEach(function(station) {
+    L.marker([station[1], station[2]], {icon: fireIcons})
     .addTo(fireLayer)
     .bindPopup(station[0]);
 });
@@ -76,13 +76,13 @@ const hospitals = [
 
 const hospitalIcon = L.icon({
     iconUrl: "images/hospital.png",
-    iconSize: [30,30],
-    iconAnchor: [17,35],
-    popupAnchor: [0,-35]
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
 });
 
-hospitals.forEach(function(station){
-    L.marker([station[1],station[2]], {icon: hospitalIcon})
+hospitals.forEach(function(station) {
+    L.marker([station[1], station[2]], {icon: hospitalIcon})
     .addTo(hospitalLayer)
     .bindPopup(station[0]);
 });

@@ -5,32 +5,102 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAFEZONE</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="flex min-h-screen">
-    <!-- Sidebar -->
+    
     <nav class="w-64 bg-blue-500 fixed h-full flex flex-col">
-        <div class="text-white text-xl font-bold px-8 py-8 border-b border-white/30">
-            SAFE<span class="text-white">ZONE</span>
-        </div>
+        <div class="text-white text-xl font-bold px-8 py-8 border-b border-white/30">SAFEZONE</div>
         <ul class="space-y-1 mt-4">
-             <li>
-                <a href="index.html" class="block text-white hover:bg-blue-600 px-8 py-4">
-                    Dashboard
-                </a>
-            </li>
-            <li>
-                <a href="callrecords.html" class="block text-white hover:bg-blue-600 px-8 py-4">
-                    Call Records
-                </a>
-            </li>
+            <li><a href="index.html" class="block text-white hover:bg-blue-600 px-8 py-4">Dashboard</a></li>
+            <li><a href="callrecords.html" class="block text-white hover:bg-blue-600 px-8 py-4">Call Records</a></li>
         </ul>
     </nav>
-    <!-- Main Content -->
+
+    
     <main class="flex-1 ml-64 bg-white p-6">
         <div class="bg-gray-50 rounded-lg p-10 min-h-[calc(100vh-200px)] border border-gray-100">
-            <h1 class="text-2xl font-semibold text-gray-800 mb-4">Records</h1>
-            <p class="text-gray-600 leading-relaxed">View and manage your reports here.</p>
+            <h1 class="text-2xl font-semibold text-gray-800 mb-2">Records</h1>
+            <p class="text-gray-600 mb-6">View and manage your reports here.</p>
+
+            
+            <div class="flex gap-3 mb-6">
+                <button onclick="filterBy('all')" id="btn-all"
+                    class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-blue-500 text-white border-blue-500">
+                    All
+                </button>
+                <button onclick="filterBy('Police')" id="btn-Police"
+                    class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
+                    🚔 Police
+                </button>
+                <button onclick="filterBy('Fire')" id="btn-Fire"
+                    class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
+                    🔥 Fire
+                </button>
+                <button onclick="filterBy('Medic')" id="btn-Medic"
+                    class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
+                    🚑 Medic
+                </button>
+            </div>
+
+            <!-- Output -->
+            <div id="output" class="text-gray-700">
+                <p class="text-gray-400">Click a filter or load all reports.</p>
+            </div>
         </div>
     </main>
+
+    <script>
+        const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZWR5dWxjcnhjdHRidWtieW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2OTY5NzksImV4cCI6MjA5MDI3Mjk3OX0.5T3mlRqC-mRdUdsaA_ftIlO-tCX8etdDyBX4WQjic5c';
+
+        const { createClient } = supabase;
+        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function filterBy(service) {
+            // Update active button style
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-500', 'text-white', 'border-blue-500');
+                btn.classList.add('bg-white', 'text-gray-600', 'border-gray-300');
+            });
+            const active = document.getElementById('btn-' + service);
+            if (active) {
+                active.classList.add('bg-blue-500', 'text-white', 'border-blue-500');
+                active.classList.remove('bg-white', 'text-gray-600', 'border-gray-300');
+            }
+
+            document.getElementById('output').innerHTML = '<p class="text-gray-400">Loading...</p>';
+
+            let query = db.from('reports').select('description, "time sent", services');
+            if (service !== 'all') {
+                query = query.eq('services', service);
+            }
+
+            const { data, error } = await query;
+
+            if (error) {
+                document.getElementById('output').innerHTML = '<p class="text-red-500">Error: ' + error.message + '</p>';
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                document.getElementById('output').innerHTML = '<p class="text-gray-400">No reports found.</p>';
+                return;
+            }
+
+            document.getElementById('output').innerHTML = data.map(row => `
+                <div class="bg-white p-4 rounded border mb-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-blue-500">${row.services || 'Unknown'}</span>
+                        <span class="text-gray-400 text-xs">${row["time sent"] || ''}</span>
+                    </div>
+                    <p class="text-gray-800">${row.description || 'No description'}</p>
+                </div>
+            `).join('');
+        }
+
+        // Load all on page open
+        filterBy('all');
+    </script>
 </body>
 </html>
