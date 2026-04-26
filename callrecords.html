@@ -97,9 +97,9 @@
 
             document.getElementById('output').innerHTML = '<p class="text-gray-400">Loading...</p>';
 
-            let query = db.from('reports').select('description, "time sent", services, image_url');
+            let query = db.from('incidents').select('category, "description", created_at, image_url');
             if (service !== 'all') {
-                query = query.eq('services', service);
+                query = query.eq('category', service);
             }
 
             const { data, error } = await query;
@@ -131,8 +131,8 @@
                 return `
                     <div class="bg-white p-4 rounded border mb-3">
                         <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs font-medium text-blue-500">${row.services || 'Unknown'}</span>
-                            <span class="text-gray-400 text-xs">${row["time sent"] || ''}</span>
+                            <span class="text-xs font-medium text-blue-500">${row.category || 'Unknown'}</span>
+                            <span class="text-gray-400 text-xs">${row["created_at"] || ''}</span>
                         </div>
                         <p class="text-gray-800">${row.description || 'No description'}</p>
                         ${imageSection}
