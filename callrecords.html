@@ -46,20 +46,20 @@
             <div id="output" class="text-gray-700">
                 <p class="text-gray-400">Loading...</p>
             </div>
-        </div>
+        </div>                                      
     </main>
 
     <!-- Image Preview Modal -->
     <div id="modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50" onclick="closeModal()">
         <div class="relative max-w-2xl w-full mx-4" onclick="event.stopPropagation()">
             <button onclick="closeModal()" class="absolute -top-10 right-0 text-white text-sm hover:text-gray-300">✕ Close</button>
-            <img id="modal-img" src="" class="w-full rounded-lg shadow-xl" />
+            <img id="modal-img" src="" class="w-full rounded-lg shadow-xl" /> 
         </div>
-    </div>
+    </div>                                                      
 
     <script>
         const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqZWR5dWxjcnhjdHRidWtieW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2OTY5NzksImV4cCI6MjA5MDI3Mjk3OX0.5T3mlRqC-mRdUdsaA_ftIlO-tCX8etdDyBX4WQjic5c';
+        const SUPABASE_ANON_KEY = 'sb_publishable_O4_Gy_uk6L50ARMA8QnP1g_QEAS2lJJ';
 
         const { createClient } = supabase;
         const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

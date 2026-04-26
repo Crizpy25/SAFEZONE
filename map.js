@@ -1,4 +1,17 @@
-const map = L.map('map').setView([10.7202, 122.5621], 13);
+const bounds = L.latLngBounds(
+  [10.65, 122.48],  // Southwest corner
+  [10.77, 122.62]   // Northeast corner
+);
+
+const map = L.map('map', {
+  minZoom: 13.2,
+  maxZoom: 18,
+  maxBounds: bounds,
+  maxBoundsViscosity: 1.0
+}).setView([10.7202, 122.5621], 13);
+
+
+
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap',
@@ -87,7 +100,7 @@ hospitals.forEach(function(station) {
     .bindPopup(station[0]);
 });
 
-// Filter functions
+
 function togglePolice() {
     if (map.hasLayer(policeLayer)) {
         map.removeLayer(policeLayer);
@@ -116,12 +129,12 @@ function showAllLayers() {
     const allVisible = map.hasLayer(policeLayer) && map.hasLayer(fireLayer) && map.hasLayer(hospitalLayer);
     
     if (allVisible) {
-        // Hide all layers
+        
         map.removeLayer(policeLayer);
         map.removeLayer(fireLayer);
         map.removeLayer(hospitalLayer);
     } else {
-        // Show all layers
+        
         if (!map.hasLayer(policeLayer)) policeLayer.addTo(map);
         if (!map.hasLayer(fireLayer)) fireLayer.addTo(map);
         if (!map.hasLayer(hospitalLayer)) hospitalLayer.addTo(map);
