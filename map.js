@@ -1,26 +1,68 @@
+// 1. CONFIGURATION & SUPABASE INITIALIZATION
+const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_O4_Gy_uk6L50ARMA8QnP1g_QEAS2lJJ';
+const { createClient } = supabase;
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// State for GPS Tracking
+let trackingMarkers = new Map();
+
+// 2. MAP SETUP
 const bounds = L.latLngBounds(
-  [10.65, 122.48],  // Southwest corner
-  [10.77, 122.62]   // Northeast corner
+    [10.65, 122.48], // Southwest corner
+    [10.77, 122.62]  // Northeast corner
 );
 
 const map = L.map('map', {
-  minZoom: 13.2,
-  maxZoom: 18,
-  maxBounds: bounds,
-  maxBoundsViscosity: 1.0
+    minZoom: 13.2,
+    maxZoom: 18,
+    maxBounds: bounds,
+    maxBoundsViscosity: 0.7
 }).setView([10.7202, 122.5621], 13);
-
-
-
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap',
 }).addTo(map);
 
-const policeLayer = L.layerGroup().addTo(map);
-const fireLayer = L.layerGroup().addTo(map);
-const hospitalLayer = L.layerGroup().addTo(map);
+// 3. LAYER GROUPS
+const policeLayer = L.layerGroup();
+const fireLayer = L.layerGroup();
+const hospitalLayer = L.layerGroup();
+const incidentLayer = L.layerGroup().addTo(map); 
+const trackingLayer = L.layerGroup().addTo(map); 
 
+// 4. ICONS
+const policeIcon = L.icon({
+    iconUrl: "images/police.png",
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
+});
+
+const fireIcons = L.icon({
+    iconUrl: "images/fire.png",
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
+});
+
+const hospitalIcon = L.icon({
+    iconUrl: "images/hospital.png",
+    iconSize: [30, 30],
+    iconAnchor: [17, 35],
+    popupAnchor: [0, -35]
+});
+
+const redIcon = L.icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
+
+// 5. STATIC DATA LOAD
 const policeStations = [
     ["PS1 City Proper",10.701501994092405, 122.56369039944839],
     ["PS2 La Paz",10.70552222109631, 122.56549995693831],
@@ -34,19 +76,7 @@ const policeStations = [
     ["ICPO Police Station 9",10.7272054892569, 122.56710895228002],
     ["ICPO Police Station 10",10.70553584277189, 122.55517513417514]
 ];
-
-const policeIcon = L.icon({
-    iconUrl: "images/police.png",
-    iconSize: [30, 30],
-    iconAnchor: [17, 35],
-    popupAnchor: [0, -35]
-});
-
-policeStations.forEach(function(station) {
-    L.marker([station[1], station[2]], {icon: policeIcon})
-    .addTo(policeLayer)
-    .bindPopup(station[0]);
-});
+policeStations.forEach(s => L.marker([s[1], s[2]], {icon: policeIcon}).addTo(policeLayer).bindPopup(s[0]));
 
 const fireStations = [
     ["La Paz Fire Sub-Station", 10.712651852092284, 122.57295111469945],
@@ -61,18 +91,7 @@ const fireStations = [
     ["Old Molo Fire Station", 10.697030999439814, 122.5488881609591],
     ["San Isidro Fire Sub-Station", 10.736444550002995, 122.5458557423291]
 ];
-const fireIcons = L.icon({
-    iconUrl: "images/fire.png",
-    iconSize: [30, 30],
-    iconAnchor: [17, 35],
-    popupAnchor: [0, -35]
-});
-
-fireStations.forEach(function(station) {
-    L.marker([station[1], station[2]], {icon: fireIcons})
-    .addTo(fireLayer)
-    .bindPopup(station[0]);
-});
+fireStations.forEach(s => L.marker([s[1], s[2]], {icon: fireIcons}).addTo(fireLayer).bindPopup(s[0]));
 
 const hospitals = [
     ["Western Visayas Medical Center (Public)", 10.718885489071287, 122.54193891896666],
@@ -84,87 +103,197 @@ const hospitals = [
     ["QualiMed Hospital Iloilo", 10.706542561402188, 122.54782241379408],
     ["Medicus Medical Center", 10.702756754480117, 122.55224702393059],
     ["AMOSUP Seamen's Hospital", 10.714828158629505, 122.53455543124073],
-    
 ];
+hospitals.forEach(s => L.marker([s[1], s[2]], {icon: hospitalIcon}).addTo(hospitalLayer).bindPopup(s[0]));
 
-const hospitalIcon = L.icon({
-    iconUrl: "images/hospital.png",
-    iconSize: [30, 30],
-    iconAnchor: [17, 35],
-    popupAnchor: [0, -35]
-});
-
-hospitals.forEach(function(station) {
-    L.marker([station[1], station[2]], {icon: hospitalIcon})
-    .addTo(hospitalLayer)
-    .bindPopup(station[0]);
-});
-
-
-function togglePolice() {
-    if (map.hasLayer(policeLayer)) {
-        map.removeLayer(policeLayer);
-    } else {
-        policeLayer.addTo(map);
-    }
-}
-
-function toggleFire() {
-    if (map.hasLayer(fireLayer)) {
-        map.removeLayer(fireLayer);
-    } else {
-        fireLayer.addTo(map);
-    }
-}
-
-function toggleHospital() {
-    if (map.hasLayer(hospitalLayer)) {
-        map.removeLayer(hospitalLayer);
-    } else {
-        hospitalLayer.addTo(map);
-    }
-}
+// 6. TOGGLE FUNCTIONS
+function togglePolice() { map.hasLayer(policeLayer) ? map.removeLayer(policeLayer) : policeLayer.addTo(map); }
+function toggleFire() { map.hasLayer(fireLayer) ? map.removeLayer(fireLayer) : fireLayer.addTo(map); }
+function toggleHospital() { map.hasLayer(hospitalLayer) ? map.removeLayer(hospitalLayer) : hospitalLayer.addTo(map); }
 
 function showAllLayers() {
     const allVisible = map.hasLayer(policeLayer) && map.hasLayer(fireLayer) && map.hasLayer(hospitalLayer);
-    
     if (allVisible) {
-        
-        map.removeLayer(policeLayer);
-        map.removeLayer(fireLayer);
-        map.removeLayer(hospitalLayer);
+        [policeLayer, fireLayer, hospitalLayer].forEach(l => map.removeLayer(l));
     } else {
-        
-        if (!map.hasLayer(policeLayer)) policeLayer.addTo(map);
-        if (!map.hasLayer(fireLayer)) fireLayer.addTo(map);
-        if (!map.hasLayer(hospitalLayer)) hospitalLayer.addTo(map);
+        [policeLayer, fireLayer, hospitalLayer].forEach(l => l.addTo(map));
     }
 }
 
-var marker;
+// 7. SUPABASE DYNAMIC LOGIC (Incidents & GPS)
+async function loadReports() {
+    const { data, error } = await supabaseClient
+        .from('incidents')
+        .select('*')
+        // This query fetches anything that isn't 'resolved'
+        .not('status', 'eq', 'resolved'); 
 
-function refreshLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(position) {
-            var lat = position.coords.latitude;
-            var lng = position.coords.longitude;
+    if (error) return console.error('Error loading reports:', error);
+    
+    incidentLayer.clearLayers(); 
+    data.forEach(report => addIncidentMarker(report));
+}
 
-            map.setView([lat, lng], 16);
+function addIncidentMarker(report) {
+    const id = report.id;
+    if (!id) return;
+    if (report.status === 'resolved') return;
 
-            if (marker) {
-                map.removeLayer(marker);
-            }
+    const lat = report.latitude || report.lat;
+    const lng = report.longitude || report.long || report.longtitude;
+    if (!lat || !lng) return;
 
-            marker = L.marker([lat, lng]).addTo(map)
-                .bindPopup("Your Location<br>Lat: " + lat + "<br>Lng: " + lng)
-                .openPopup();
-        }, function(error) {
-            alert("Unable to retrieve location");
-        }, {
-            enableHighAccuracy: true
-        });
+    const marker = L.marker([lat, lng], { icon: redIcon });
+    marker.incidentId = String(id);
+    marker.addTo(incidentLayer);
+
+    const popupContent = `
+        <div style="text-align: center; max-width: 220px;">
+            <b> ${(report.category || 'emergency').toUpperCase()}</b>
+            <hr>
+            <p>${report.description || 'No description'}</p>
+
+            ${report.image_url ? `
+                <img src="${report.image_url}"
+                     style="width:100%; border-radius:6px;"
+                     onerror="this.style.display='none'"/>
+            ` : ''}
+
+            <button onclick="markAsResolved('${id}')"
+                style="margin-top:8px;width:100%;background:#28a745;color:white;border:none;padding:6px;border-radius:4px;">
+                Mark as Done
+            </button>
+        </div>
+    `;
+
+    marker.bindPopup(popupContent, {
+        maxWidth: 250,
+        autoPan: true,
+        autoPanPaddingTopLeft: [0, 140],
+        autoPanPaddingBottomRight: [0, 40]
+    });
+
+    // ✅ THIS fixes your "cut popup"
+    marker.on('popupopen', function () {
+
+    // ✅ Step 1: Fix zoom if too far
+    if (map.getZoom() < 14) {
+        map.setView(marker.getLatLng(), 14, { animate: true });
+    }
+
+    // ✅ Step 2: Pan AFTER zoom
+    setTimeout(() => {
+        const px = map.project(marker.getLatLng());
+        px.y -= 160;
+        map.panTo(map.unproject(px), { animate: true });
+    }, 300);
+
+});
+}
+async function markAsResolved(incidentId) {
+    const { data, error } = await supabaseClient
+        .from('incidents')
+        .update({ status: 'resolved' }) 
+        .eq('id', incidentId)
+        .select(); 
+
+    if (error) {
+        console.error("Database Error:", error.message);
+        alert("Failed to update database: " + error.message);
+    } else if (data.length === 0) {
+        console.warn("No rows updated. Does the ID exist?");
+        alert("Warning: No record was updated. Check the ID.");
     } else {
-        alert("Geolocation not supported");
+        console.log("Database updated successfully:", data);
     }
 }
 
+// 8. REAL-TIME SUBSCRIPTION (CLEANED & CONSOLIDATED)
+supabaseClient
+  .channel('map-updates')
+
+  // ---------------- NEW INCIDENTS ----------------
+  .on('postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'incidents' },
+    (payload) => {
+      console.log("New incident received:", payload.new);
+
+      addIncidentMarker(payload.new);
+
+      // alert sound
+      new Audio('https://www.soundjay.com/buttons/beep-01a.mp3')
+        .play()
+        .catch(() => console.log("Audio blocked"));
+
+      // focus map
+      const lat = payload.new.latitude || payload.new.lat;
+      const lng = payload.new.longitude || payload.new.long;
+
+      if (lat && lng) {
+        map.flyTo([lat, lng], 15);
+      }
+    }
+  )
+
+  // ---------------- STATUS UPDATES ----------------
+  .on('postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'incidents' },
+    (payload) => {
+
+      console.log("Incident update detected:", payload.new);
+
+      const id = String(payload.new.id);
+      const status = (payload.new.status || '').toLowerCase().trim();
+
+      if (status === 'resolved') {
+        removeMarkerFromMap(id);
+        return;
+      }
+
+      if (status === 'active') {
+        // prevent duplicate markers
+        removeMarkerFromMap(id);
+        addIncidentMarker(payload.new);
+      }
+    }
+  )
+
+
+
+  .subscribe((status) => {
+    console.log("Supabase Connection Status:", status);
+  });
+// 9. HELPER FUNCTIONS
+function removeMarkerFromMap(id) {
+  console.log("Removing marker:", id);
+
+  incidentLayer.eachLayer((layer) => {
+    if (String(layer.incidentId) === String(id)) {
+      incidentLayer.removeLayer(layer);
+      console.log("Marker removed:", id);
+    }
+  });
+}
+
+function handleLocationUpdate(payload) {
+    const record = payload.new;
+    if (!record.latitude || !record.longitude) return;
+    
+    const id = record.vehicle_id || record.device_id;
+    let markerData = trackingMarkers.get(id);
+
+    if (markerData) {
+        animateMarkerMovement(markerData.marker, markerData.lat, markerData.lng, record.latitude, record.longitude);
+        markerData.lat = record.latitude;
+        markerData.lng = record.longitude;
+    } else {
+        const marker = L.marker([record.latitude, record.longitude]).addTo(trackingLayer);
+        trackingMarkers.set(id, { marker, lat: record.latitude, lng: record.longitude });
+    }
+}
+
+
+setInterval(loadReports, 3000);
+
+// Initial Load
+loadReports();

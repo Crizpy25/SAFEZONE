@@ -1,68 +1,112 @@
-// ─────────────────────────────────────────────────────────────
-//  webrtc.js  –  SAFEZONE Admin Call Handler
-// ─────────────────────────────────────────────────────────────
-
 const ADMIN_PEER_ID = 'admin-dashboard-xyz';
 
-const idleState    = document.getElementById('idleState');
+let peer = null;
+let currentCall = null;
+let timerInterval = null;
+let seconds = 0;
+let isDestroyed = false;
+
+// UI elements
+const idleState     = document.getElementById('idleState');
 const incomingState = document.getElementById('incomingState');
-const activeState  = document.getElementById('activeState');
-const callTimer    = document.getElementById('callTimer');
-const remoteAudio  = document.getElementById('remoteAudio');
-const callBanner   = document.getElementById('callBanner');
-const statusMain   = document.getElementById('status');
+const activeState   = document.getElementById('activeState');
+const callTimer     = document.getElementById('callTimer');
+const remoteAudio   = document.getElementById('remoteAudio');
+const callBanner    = document.getElementById('callBanner');
+const statusMain    = document.getElementById('status');
 
-let peer, currentCall, timerInterval, seconds = 0;
+const isDashboard = idleState && incomingState && activeState;
 
-function show(el)  { el.classList.remove('hidden'); }
-function hide(el)  { el.classList.add('hidden'); }
+function show(el) { if (el) el.classList.remove('hidden'); }
+function hide(el) { if (el) el.classList.add('hidden'); }
 
+function setStatus(text) {
+    if (statusMain) statusMain.textContent = text;
+}
+
+// ───────────────────────── SAFE INIT ─────────────────────────
 function initPeer() {
+
+    if (peer && !peer.destroyed) return; // prevent duplicates
+    isDestroyed = false;
+
     peer = new Peer(ADMIN_PEER_ID);
 
-    peer.on('open', () => {});
-
-    peer.on('disconnected', () => {
-        setTimeout(() => peer.reconnect(), 3000);
+    peer.on('open', () => {
+        setStatus('Call not Active');
     });
 
     peer.on('call', (call) => {
         currentCall = call;
-        hide(idleState);
-        show(incomingState);
-        if (statusMain) statusMain.textContent = '📲 Incoming call...';
+
+        if (isDashboard) {
+            hide(idleState);
+            show(incomingState);
+        }
+
+        setStatus('📲 Incoming call...');
+    });
+
+    peer.on('disconnected', () => {
+        setStatus('⚠ Reconnecting...');
+
+        // SAFE reconnect check
+        if (!peer.destroyed && !isDestroyed) {
+            setTimeout(() => {
+                try {
+                    peer.reconnect();
+                } catch (e) {
+                    console.warn('Reconnect failed:', e);
+                }
+            }, 3000);
+        }
+    });
+
+    peer.on('error', (err) => {
+        console.error('PeerJS error:', err);
     });
 }
 
+// ───────────────────────── ACCEPT CALL ────────────────────────
 function acceptCall() {
-    if (!currentCall) return;
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-        .then((localStream) => {
-            currentCall.answer(localStream);
+    if (!currentCall || !isDashboard) return;
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+
+            currentCall.answer(stream);
+
             currentCall.on('stream', (remoteStream) => {
                 remoteAudio.srcObject = remoteStream;
+
                 hide(incomingState);
                 show(activeState);
                 show(callBanner);
-                if (statusMain) statusMain.textContent = '📞 Call active';
+
+                setStatus('📞 Call active');
+
                 seconds = 0;
                 clearInterval(timerInterval);
+
                 timerInterval = setInterval(() => {
                     seconds++;
                     const m = String(Math.floor(seconds / 60)).padStart(2, '0');
                     const s = String(seconds % 60).padStart(2, '0');
-                    callTimer.textContent = m + ':' + s;
+                    if (callTimer) callTimer.textContent = `${m}:${s}`;
                 }, 1000);
             });
+
             currentCall.on('close', resetUI);
             currentCall.on('error', resetUI);
+
         })
         .catch((err) => {
-            alert('Microphone access denied: ' + err.message);
+            console.error(err);
             rejectCall();
         });
 }
 
+// ───────────────────────── REJECT / END ───────────────────────
 function rejectCall() {
     currentCall?.close();
     resetUI();
@@ -73,16 +117,36 @@ function endCall() {
     resetUI();
 }
 
+// ───────────────────────── RESET ──────────────────────────────
 function resetUI() {
     clearInterval(timerInterval);
-    remoteAudio.srcObject = null;
-    callTimer.textContent = '00:00';
+
+    if (remoteAudio) remoteAudio.srcObject = null;
+    if (callTimer) callTimer.textContent = '00:00';
+
     hide(incomingState);
     hide(activeState);
     hide(callBanner);
     show(idleState);
-    if (statusMain) statusMain.textContent = 'Waiting for call...';
+
+    setStatus('Waiting for call...');
+
     currentCall = null;
 }
 
+// ───────────────────────── SAFE DESTROY ───────────────────────
+function destroyPeer() {
+    isDestroyed = true;
+
+    try {
+        peer?.destroy();
+    } catch (e) {
+        console.warn(e);
+    }
+
+    peer = null;
+}
+
+
+// ───────────────────────── START ──────────────────────────────
 initPeer();

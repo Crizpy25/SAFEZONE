@@ -6,20 +6,32 @@
     <title>SAFEZONE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="webrtc.js"></script>
 </head>
 <body class="flex min-h-screen">
+
     <!-- Sidebar -->
     <nav class="w-64 bg-blue-500 fixed h-full flex flex-col">
         <div class="text-white text-xl font-bold px-8 py-8 border-b border-white/30">SAFEZONE</div>
         <ul class="space-y-1 mt-4">
-            <li><a href="index.html" class="block text-white hover:bg-blue-600 px-8 py-4">Dashboard</a></li>
-            <li><a href="callrecords.html" class="block text-white hover:bg-blue-600 px-8 py-4">Call Records</a></li>
+            <li><a href="index.html" class="block text-white font-bold hover:bg-blue-600 px-8 py-4">Dashboard</a></li>
+            <li><a href="callrecords.html" class="block text-white font-bold bg-blue-700 px-8 py-4">Call Records</a></li>
         </ul>
+
+        <!-- Call Status Box -->
+        <div class="mt-auto border-t border-white/30 p-4">
+            <div class="bg-blue-800/50 rounded-xl p-4 text-center">
+                <p id="status" class="text-white/60 text-sm">Call not Active.</p>
+            </div>
+        </div>
     </nav>
 
     <!-- Main Content -->
-    <main class="flex-1 ml-64 bg-white p-6">
-        <div class="bg-gray-50 rounded-lg p-10 min-h-[calc(100vh-200px)] border border-gray-100">
+    <main class="flex-1 ml-64 bg-gray-700 p-10">
+        <div class="bg-gray-100 rounded-lg p-10 mt-50 min-h-[calc(100vh-200px)] border border-gray-100">
             <h1 class="text-2xl font-semibold text-gray-800 mb-2">Records</h1>
             <p class="text-gray-600 mb-6">View and manage your reports here.</p>
 
@@ -31,31 +43,32 @@
                 </button>
                 <button onclick="filterBy('Police')" id="btn-Police"
                     class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
-                    🚔 Police
+                    Police
                 </button>
                 <button onclick="filterBy('Fire')" id="btn-Fire"
                     class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
-                    🔥 Fire
+                    Fire
                 </button>
-                <button onclick="filterBy('Medic')" id="btn-Medic"
+                <button onclick="filterBy('Hospital')" id="btn-Hospital"
                     class="filter-btn px-4 py-2 rounded-full text-sm font-medium border transition-colors bg-white text-gray-600 border-gray-300 hover:border-blue-400">
-                    🚑 Medic
+                    Medic
+                </button>
             </div>
 
             <!-- Output -->
             <div id="output" class="text-gray-700">
                 <p class="text-gray-400">Loading...</p>
             </div>
-        </div>                                      
+        </div>
     </main>
 
     <!-- Image Preview Modal -->
     <div id="modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50" onclick="closeModal()">
         <div class="relative max-w-2xl w-full mx-4" onclick="event.stopPropagation()">
             <button onclick="closeModal()" class="absolute -top-10 right-0 text-white text-sm hover:text-gray-300">✕ Close</button>
-            <img id="modal-img" src="" class="w-full rounded-lg shadow-xl" /> 
+            <img id="modal-img" src="" class="w-full rounded-lg shadow-xl" />
         </div>
-    </div>                                                      
+    </div>
 
     <script>
         const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
@@ -65,12 +78,11 @@
         const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         function getImageUrl(path) {
-            if (!path) return null;
-            // If it's already a full URL, return as-is
-            if (path.startsWith('http')) return path;
-            // Otherwise build the public URL from storage
-            return `${SUPABASE_URL}/storage/v1/object/public/${path}`;
-        }
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+
+    return `${SUPABASE_URL}/storage/v1/object/public/report-images/${path}`;
+}
 
         function openModal(src) {
             document.getElementById('modal-img').src = src;
@@ -84,7 +96,6 @@
         }
 
         async function filterBy(service) {
-            // Update active button style
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('bg-blue-500', 'text-white', 'border-blue-500');
                 btn.classList.add('bg-white', 'text-gray-600', 'border-gray-300');
@@ -97,7 +108,7 @@
 
             document.getElementById('output').innerHTML = '<p class="text-gray-400">Loading...</p>';
 
-            let query = db.from('incidents').select('category, "description", created_at, image_url');
+            let query = db.from('incidents').select('category, "description", created_at, image_url, latitude, longitude');
             if (service !== 'all') {
                 query = query.eq('category', service);
             }
@@ -120,10 +131,10 @@
                     <div class="mt-3">
                         <img 
                             src="${imgUrl}" 
-                            alt="Report image"
+                            alt="Incidents image"
                             class="w-full h-40 object-cover rounded cursor-pointer hover:opacity-90 transition-opacity"
                             onclick="openModal('${imgUrl}')"
-                            onerror="this.parentElement.innerHTML='<p class=\'text-xs text-gray-400\'>Image unavailable</p>'"
+                            onerror="this.src='fallback.jpg'<p class=\'text-xs text-gray-400\'>Image unavailable</p>'"
                         />
                         <p class="text-xs text-gray-400 mt-1">Click image to enlarge</p>
                     </div>` : `<p class="text-xs text-gray-400 mt-3">No image attached</p>`;
@@ -138,11 +149,11 @@
                         ${imageSection}
                     </div>
                 `;
-            }).join('');
+            }).join('');    
         }
 
-        // Load all on page open
         filterBy('all');
     </script>
+
 </body>
 </html>
