@@ -56,7 +56,20 @@ async function handleRegister(event) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Creating account...';
         
-        // Check if username already exists
+        // Check if email or username already exists
+        const { data: existingEmail } = await db
+            .from('admins')
+            .select('id')
+            .eq('email', email)
+            .single();
+
+        if (existingEmail) {
+            showError('Email already exists');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Account';
+            return;
+        }
+
         const { data: existingUser } = await db
             .from('admins')
             .select('id')
@@ -205,16 +218,11 @@ function checkAuthentication() {
         return;
     }
     
-    console.log('Authentication verified, initializing dashboard...');
+
     
     // Display current user in sidebar
     updateUserDisplay();
     
-    // Trigger map initialization after auth is verified
-    if (window.initializeMap && typeof window.initializeMap === 'function') {
-        console.log('Calling initializeMap from auth check');
-        setTimeout(initializeMap, 100);
-    }
 }
 
 // Update user display in sidebar
@@ -227,10 +235,36 @@ function updateUserDisplay() {
     }
 }
 
+// Initialize password show/hide checkboxes
+function initPasswordToggles() {
+    document.querySelectorAll('.show-password-toggle').forEach((checkbox) => {
+        const inputs = checkbox.dataset.targets
+            .split(',')
+            .map((target) => document.getElementById(target.trim()))
+            .filter(Boolean);
+
+        if (!inputs.length || checkbox.dataset.ready === 'true') {
+            return;
+        }
+
+        checkbox.dataset.ready = 'true';
+        checkbox.addEventListener('change', () => {
+            inputs.forEach((input) => {
+                input.type = checkbox.checked ? 'text' : 'password';
+            });
+        });
+    });
+}
+
+function initPage() {
+    initPasswordToggles();
+    checkAuthentication();
+}
+
 // Run authentication check when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkAuthentication);
+    document.addEventListener('DOMContentLoaded', initPage);
 } else {
     // DOM already loaded
-    checkAuthentication();
+    initPage();
 }

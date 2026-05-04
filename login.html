@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAFEZONE - Admin Login</title>
+    <title>SAFEZONE | Log in</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -72,6 +72,15 @@
                     placeholder="Enter your password"
                 >
             </div>
+
+            <label class="mb-4 flex items-center gap-2 text-sm text-gray-700">
+                <input
+                    type="checkbox"
+                    class="show-password-toggle h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    data-targets="password"
+                >
+                Show password
+            </label>
 
             <div id="errorMessage" class="mb-4 p-3 bg-red-100 text-red-700 rounded-lg hidden">
                 Invalid username or password
