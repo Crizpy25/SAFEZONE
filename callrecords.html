@@ -8,8 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-    <script src="webrtc.js"></script>
+    <script src="auth.js"></script>
 </head>
 <body class="flex min-h-screen">
 
@@ -26,6 +25,14 @@
             <div class="bg-blue-800/50 rounded-xl p-4 text-center">
                 <p id="status" class="text-white/60 text-sm">Call not Active.</p>
             </div>
+        </div>
+        
+        <!-- User Info & Logout -->
+        <div class="border-t border-white/30 pt-4 px-4 pb-4">
+            <p class="text-white/70 text-xs mb-3">Logged in as: <span id="userDisplay" class="font-semibold text-white">Admin</span></p>
+            <button onclick="logout()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                Logout
+            </button>
         </div>
     </nav>
 
@@ -71,18 +78,13 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_O4_Gy_uk6L50ARMA8QnP1g_QEAS2lJJ';
-
-        const { createClient } = supabase;
-        const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         function getImageUrl(path) {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
+            if (!path) return null;
+            if (path.startsWith('http')) return path;
 
-    return `${SUPABASE_URL}/storage/v1/object/public/report-images/${path}`;
-}
+            const supabaseUrl = 'https://zjedyulcrxcttbukbynh.supabase.co';
+            return `${supabaseUrl}/storage/v1/object/public/report-images/${path}`;
+        }
 
         function openModal(src) {
             document.getElementById('modal-img').src = src;
@@ -108,7 +110,12 @@
 
             document.getElementById('output').innerHTML = '<p class="text-gray-400">Loading...</p>';
 
-            let query = db.from('incidents').select('category, "description", created_at, image_url, latitude, longitude');
+            if (!window.supabaseClient) {
+                document.getElementById('output').innerHTML = '<p class="text-red-500">Error: Supabase client is not loaded.</p>';
+                return;
+            }
+
+            let query = window.supabaseClient.from('incidents').select('category, "description", created_at, image_url, latitude, longitude');
             if (service !== 'all') {
                 query = query.eq('category', service);
             }
@@ -134,7 +141,7 @@
                             alt="Incidents image"
                             class="w-full h-40 object-cover rounded cursor-pointer hover:opacity-90 transition-opacity"
                             onclick="openModal('${imgUrl}')"
-                            onerror="this.src='fallback.jpg'<p class=\'text-xs text-gray-400\'>Image unavailable</p>'"
+                            onerror="this.style.display='none'"
                         />
                         <p class="text-xs text-gray-400 mt-1">Click image to enlarge</p>
                     </div>` : `<p class="text-xs text-gray-400 mt-3">No image attached</p>`;
