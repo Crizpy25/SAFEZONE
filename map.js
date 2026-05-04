@@ -6,6 +6,27 @@
 let trackingMarkers = new Map();
 let map; // Declare map globally
 
+const allowedMapBounds = {
+    north: 10.77,
+    south: 10.67,
+    west: 122.47,
+    east: 122.60
+};
+
+function isInsideAllowedMapBounds(lat, lng) {
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return false;
+    }
+
+    return latitude >= allowedMapBounds.south &&
+        latitude <= allowedMapBounds.north &&
+        longitude >= allowedMapBounds.west &&
+        longitude <= allowedMapBounds.east;
+}
+
 // Initialize map after DOM is ready
 function initializeMap() {
     console.log('Initializing map...');
@@ -21,8 +42,8 @@ function initializeMap() {
 
     // 2. MAP SETUP
     const bounds = L.latLngBounds(
-        [10.65, 122.48], // Southwest corner
-        [10.77, 122.62]  // Northeast corner
+        [allowedMapBounds.south, allowedMapBounds.west], // Southwest corner
+        [allowedMapBounds.north, allowedMapBounds.east]  // Northeast corner
     );
 
     map = L.map('map', {
@@ -30,7 +51,7 @@ function initializeMap() {
         maxZoom: 18,
         maxBounds: bounds,
         maxBoundsViscosity: 0.7
-    }).setView([10.7202, 122.5621], 13);
+    }).setView([10.7202, 122.5555], 13);
 
     console.log('Map created successfully');
 
@@ -93,7 +114,11 @@ function initializeMap() {
         ["ICPO Police Station 9",10.7272054892569, 122.56710895228002],
         ["ICPO Police Station 10",10.70553584277189, 122.55517513417514]
     ];
-    policeStations.forEach(s => L.marker([s[1], s[2]], {icon: policeIcon}).addTo(window.policeLayer).bindPopup(s[0]));
+    policeStations.forEach(s => {
+        if (isInsideAllowedMapBounds(s[1], s[2])) {
+            L.marker([s[1], s[2]], {icon: policeIcon}).addTo(window.policeLayer).bindPopup(s[0]);
+        }
+    });
 
     const fireStations = [
         ["La Paz Fire Sub-Station", 10.712651852092284, 122.57295111469945],
@@ -108,7 +133,11 @@ function initializeMap() {
         ["Old Molo Fire Station", 10.697030999439814, 122.5488881609591],
         ["San Isidro Fire Sub-Station", 10.736444550002995, 122.5458557423291]
     ];
-    fireStations.forEach(s => L.marker([s[1], s[2]], {icon: fireIcons}).addTo(window.fireLayer).bindPopup(s[0]));
+    fireStations.forEach(s => {
+        if (isInsideAllowedMapBounds(s[1], s[2])) {
+            L.marker([s[1], s[2]], {icon: fireIcons}).addTo(window.fireLayer).bindPopup(s[0]);
+        }
+    });
 
     const hospitals = [
         ["Western Visayas Medical Center (Public)", 10.718885489071287, 122.54193891896666],
@@ -121,7 +150,11 @@ function initializeMap() {
         ["Medicus Medical Center", 10.702756754480117, 122.55224702393059],
         ["AMOSUP Seamen's Hospital", 10.714828158629505, 122.53455543124073],
     ];
-    hospitals.forEach(s => L.marker([s[1], s[2]], {icon: hospitalIcon}).addTo(window.hospitalLayer).bindPopup(s[0]));
+    hospitals.forEach(s => {
+        if (isInsideAllowedMapBounds(s[1], s[2])) {
+            L.marker([s[1], s[2]], {icon: hospitalIcon}).addTo(window.hospitalLayer).bindPopup(s[0]);
+        }
+    });
 
     // Load reports after map is initialized
     loadReports();
@@ -187,15 +220,16 @@ async function loadReports() {
 }
 
 function addIncidentMarker(report) {
-    if (!map) return;
+    if (!map) return false;
     
     const id = report.id;
-    if (!id) return;
-    if (report.status === 'resolved') return;
+    if (!id) return false;
+    if (report.status === 'resolved') return false;
 
     const lat = report.latitude || report.lat;
     const lng = report.longitude || report.long || report.longtitude;
-    if (!lat || !lng) return;
+    if (!lat || !lng) return false;
+    if (!isInsideAllowedMapBounds(lat, lng)) return false;
 
     const marker = L.marker([lat, lng], { icon: window.redIcon });
     marker.incidentId = String(id);
@@ -243,6 +277,8 @@ function addIncidentMarker(report) {
     }, 300);
 
 });
+
+    return true;
 }
 async function markAsResolved(incidentId) {
     const { data, error } = await supabaseClient
@@ -272,7 +308,11 @@ supabaseClient
     (payload) => {
       console.log("New incident received:", payload.new);
 
-      addIncidentMarker(payload.new);
+      const markerAdded = addIncidentMarker(payload.new);
+
+      if (!markerAdded) {
+        return;
+      }
 
       // alert sound
       new Audio('https://www.soundjay.com/buttons/beep-01a.mp3')
@@ -283,7 +323,7 @@ supabaseClient
       const lat = payload.new.latitude || payload.new.lat;
       const lng = payload.new.longitude || payload.new.long;
 
-      if (lat && lng) {
+      if (lat && lng && isInsideAllowedMapBounds(lat, lng)) {
         map.flyTo([lat, lng], 15);
       }
     }
@@ -334,6 +374,15 @@ function handleLocationUpdate(payload) {
     if (!record.latitude || !record.longitude) return;
     
     const id = record.vehicle_id || record.device_id;
+    if (!isInsideAllowedMapBounds(record.latitude, record.longitude)) {
+        const markerData = trackingMarkers.get(id);
+        if (markerData) {
+            window.trackingLayer.removeLayer(markerData.marker);
+            trackingMarkers.delete(id);
+        }
+        return;
+    }
+
     let markerData = trackingMarkers.get(id);
 
     if (markerData) {
@@ -349,5 +398,5 @@ function handleLocationUpdate(payload) {
 
 setInterval(loadReports, 5000); // Reload reports every 5 seconds
 
-// Map initialization will be triggered by auth.js after authentication
-console.log('Map.js loaded, waiting for authentication to trigger map initialization...');
+
+

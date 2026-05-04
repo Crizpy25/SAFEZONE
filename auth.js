@@ -222,6 +222,10 @@ function checkAuthentication() {
     
     // Display current user in sidebar
     updateUserDisplay();
+
+    if (document.getElementById('map') && typeof window.initializeMap === 'function') {
+        setTimeout(window.initializeMap, 100);
+    }
     
 }
 

@@ -34,7 +34,7 @@
 
 <body class="flex min-h-screen">
 
-    <!-- ── Sidebar ── -->
+    <!-- Sidebar -->
     <nav class="w-64 bg-white50/70 backdrop-blur fixed h-full flex flex-col rounded-r-2xl overflow-hidden">
         <div class="flex items-center gap-3 text-white text-xl font-bold px-6 py-6 border-b border-white/30">
             <img src="images/logo.png" alt="" class="w-20 h-20 shrink-0 object-contain" onerror="this.style.visibility='hidden'">
@@ -55,7 +55,7 @@
             </li>
         </ul>
 
-        <!-- ── Call Box ── -->
+        <!-- Call status -->
         <div class="mt-auto border-t border-white/30 p-4">
             <div class="bg-blue-800/50 rounded-xl p-4 text-center">
 
@@ -89,7 +89,7 @@
                     </div>
                 </div>
 
-                <!-- Active -->
+                
                 <div id="activeState" class="hidden">
                     <p class="text-green-300 text-sm font-medium mb-1">Call active</p>
                     <p id="callTimer" class="text-white text-lg font-light tracking-widest mb-3">00:00</p>
@@ -154,7 +154,6 @@
     <audio id="remoteAudio" autoplay playsinline></audio>
 
     <script src="map.js"></script>
-    <script src="webrtc.js"></script>
 
     
 </body>
