@@ -187,6 +187,39 @@ function showAllLayers() {
 }
 
 // 7. SUPABASE DYNAMIC LOGIC (Incidents & GPS)
+function normalizeEmergencyCategory(category) {
+    const value = String(category || '').toLowerCase().trim();
+    if (value === 'police') return 'Police';
+    if (value === 'fire') return 'Fire';
+    if (value === 'medic' || value === 'medical' || value === 'hospital') return 'Medic';
+    return null;
+}
+
+function updateActiveCounters() {
+    const counts = {
+        Police: 0,
+        Fire: 0,
+        Medic: 0
+    };
+    
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            const category = normalizeEmergencyCategory(layer.incidentCategory);
+            if (category) {
+                counts[category] += 1;
+            }
+        });
+    }
+    
+    const policeEl = document.getElementById('policeCount');
+    const fireEl = document.getElementById('fireCount');
+    const medicEl = document.getElementById('medicCount');
+    
+    if (policeEl) policeEl.textContent = counts.Police;
+    if (fireEl) fireEl.textContent = counts.Fire;
+    if (medicEl) medicEl.textContent = counts.Medic;
+}
+
 async function loadReports() {
     if (!map) {
         console.warn('Map not initialized yet');
@@ -198,7 +231,6 @@ async function loadReports() {
         const { data, error } = await window.supabaseClient
             .from('incidents')
             .select('*')
-            // This query fetches anything that isn't 'resolved'
             .not('status', 'eq', 'resolved'); 
 
         if (error) {
@@ -214,6 +246,7 @@ async function loadReports() {
         console.log('Reports loaded:', data.length, 'incidents');
         window.incidentLayer.clearLayers(); 
         data.forEach(report => addIncidentMarker(report));
+        updateActiveCounters();
     } catch (err) {
         console.error('Exception in loadReports:', err);
     }
@@ -233,6 +266,7 @@ function addIncidentMarker(report) {
 
     const marker = L.marker([lat, lng], { icon: window.redIcon });
     marker.incidentId = String(id);
+    marker.incidentCategory = report.category;
     marker.addTo(window.incidentLayer);
 
     const popupContent = `
@@ -313,6 +347,8 @@ supabaseClient
       if (!markerAdded) {
         return;
       }
+      
+      updateActiveCounters();
 
       // alert sound
       new Audio('https://www.soundjay.com/buttons/beep-01a.mp3')
@@ -341,6 +377,7 @@ supabaseClient
 
       if (status === 'resolved') {
         removeMarkerFromMap(id);
+        updateActiveCounters();
         return;
       }
 
@@ -348,6 +385,7 @@ supabaseClient
         // prevent duplicate markers
         removeMarkerFromMap(id);
         addIncidentMarker(payload.new);
+        updateActiveCounters();
       }
     }
   )
@@ -367,6 +405,7 @@ function removeMarkerFromMap(id) {
       console.log("Marker removed:", id);
     }
   });
+  updateActiveCounters();
 }
 
 function handleLocationUpdate(payload) {
@@ -379,6 +418,7 @@ function handleLocationUpdate(payload) {
         if (markerData) {
             window.trackingLayer.removeLayer(markerData.marker);
             trackingMarkers.delete(id);
+            updateActiveCounters();
         }
         return;
     }
@@ -392,11 +432,15 @@ function handleLocationUpdate(payload) {
     } else {
         const marker = L.marker([record.latitude, record.longitude]).addTo(window.trackingLayer);
         trackingMarkers.set(id, { marker, lat: record.latitude, lng: record.longitude });
+        updateActiveCounters();
     }
 }
 
 
-setInterval(loadReports, 5000); // Reload reports every 5 seconds
+setInterval(() => {
+    loadReports();
+    updateActiveCounters();
+}, 5000);
 
 
 

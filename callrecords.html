@@ -130,6 +130,91 @@
             document.getElementById('modal').classList.remove('flex');
         }
 
+        const agencyLocations = {
+            Police: [
+                ["PS1 City Proper", 10.701501994092405, 122.56369039944839],
+                ["PS2 La Paz", 10.70552222109631, 122.56549995693831],
+                ["PS3 Jaro", 10.71560226623802, 122.56266469623272],
+                ["Molo Police Station", 10.698346304433658, 122.55105476464729],
+                ["PS5 Mandurriao", 10.71683400704982, 122.53648059623264],
+                ["Arevalo Police Station", 10.68890021276814, 122.51886825833218],
+                ["PS7 Lapuz", 10.693878433584727, 122.55874469935698],
+                ["Sambag Police Assistant", 10.742333401995415, 122.5409438842518],
+                ["Ungka Police Station", 10.747512542219782, 122.54008363707585],
+                ["ICPO Police Station 9", 10.7272054892569, 122.56710895228002],
+                ["ICPO Police Station 10", 10.70553584277189, 122.55517513417514]
+            ],
+            Fire: [
+                ["La Paz Fire Sub-Station", 10.712651852092284, 122.57295111469945],
+                ["Federation Iloilo Fire Station", 10.698697241164309, 122.57076622219913],
+                ["BFP Iloilo", 10.690705849929284, 122.58144791800282],
+                ["Bo. Obrero Fire Sub-Station", 10.702275407727985, 122.59067301967075],
+                ["Mandurriao Fire Sub-Station", 10.719211489646474, 122.53920666146492],
+                ["Arevalo Fire Sub-Station", 10.688797426748417, 122.51626529021178],
+                ["Sto. Nino Sur Fire Sub-Station", 10.68223713089546, 122.5099533777009],
+                ["BFP Jaro", 10.72744065268221, 122.56251218153137],
+                ["Ungka Fire Sub-Station", 10.74690941039231, 122.53931659330536],
+                ["Old Molo Fire Station", 10.697030999439814, 122.5488881609591],
+                ["San Isidro Fire Sub-Station", 10.736444550002995, 122.5458557423291]
+            ],
+            Medic: [
+                ["Western Visayas Medical Center (Public)", 10.718885489071287, 122.54193891896666],
+                ["Iloilo Mission Hospital", 10.714817707214994, 122.56058274040979],
+                ["St. Paul's Hospital Iloilo", 10.702011896133618, 122.56694877109325],
+                ["Iloilo Doctors' Hospital", 10.696804152759018, 122.55440768089073],
+                ["The Medical City Iloilo", 10.699644543003238, 122.54277137544258],
+                ["West Visayas State University Medical Center", 10.717168244196454, 122.56120580362972],
+                ["QualiMed Hospital Iloilo", 10.706542561402188, 122.54782241379408],
+                ["Medicus Medical Center", 10.702756754480117, 122.55224702393059],
+                ["AMOSUP Seamen's Hospital", 10.714828158629505, 122.53455543124073]
+            ]
+        };
+
+        function getReportCategory(category) {
+            const value = String(category || '').toLowerCase().trim();
+            if (value === 'medic' || value === 'medical' || value === 'hospital') return 'Medic';
+            if (value === 'fire') return 'Fire';
+            if (value === 'police') return 'Police';
+            return null;
+        }
+
+        function calculateDistanceKm(lat1, lng1, lat2, lng2) {
+            const radiusKm = 6371;
+            const toRadians = degrees => degrees * Math.PI / 180;
+            const dLat = toRadians(lat2 - lat1);
+            const dLng = toRadians(lng2 - lng1);
+            const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                Math.sin(dLng / 2) ** 2;
+
+            return radiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function formatDistance(distanceKm) {
+            if (!Number.isFinite(distanceKm)) return '';
+            return distanceKm < 1
+                ? `${Math.round(distanceKm * 1000)} m away`
+                : `${distanceKm.toFixed(2)} km away`;
+        }
+
+        function getNearestAgency(category, lat, lng) {
+            const agencyType = getReportCategory(category);
+            const latitude = Number(lat);
+            const longitude = Number(lng);
+
+            if (!agencyType || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return null;
+            }
+
+            return agencyLocations[agencyType]
+                .map(([name, agencyLat, agencyLng]) => ({
+                    type: agencyType,
+                    name,
+                    distanceKm: calculateDistanceKm(latitude, longitude, agencyLat, agencyLng)
+                }))
+                .sort((a, b) => a.distanceKm - b.distanceKm)[0] || null;
+        }
+
         async function filterBy(service) {
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('bg-blue-500', 'text-white', 'border-blue-500');
@@ -167,6 +252,13 @@
 
             document.getElementById('output').innerHTML = data.map(row => {
                 const imgUrl = getImageUrl(row.image_url);
+                const suggestion = getNearestAgency(row.category, row.latitude, row.longitude);
+                const suggestionSection = suggestion ? `
+                    <div class="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
+                        <p class="text-xs font-semibold uppercase text-blue-700">Suggested nearest ${suggestion.type} agency</p>
+                        <p class="text-sm font-semibold text-gray-800">${suggestion.name}</p>
+                        <p class="text-xs text-gray-500">${formatDistance(suggestion.distanceKm)}</p>
+                    </div>` : '';
                 const imageSection = imgUrl ? `
                     <div class="mt-3">
                         <img 
@@ -186,6 +278,7 @@
                             <span class="text-gray-400 text-xs">${row["created_at"] || ''}</span>
                         </div>
                         <p class="text-gray-800">${row.description || 'No description'}</p>
+                        ${suggestionSection}
                         ${imageSection}
                     </div>
                 `;
