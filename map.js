@@ -1,7 +1,3 @@
-// 1. CONFIGURATION
-// Supabase client is initialized in auth.js and exposed as window.supabaseClient
-// We'll use that shared instance to avoid duplication
-
 // State for GPS Tracking
 let trackingMarkers = new Map();
 let map; // Declare map globally
@@ -97,8 +93,27 @@ function initializeMap() {
         shadowSize: [41, 41]
     });
 
-    // Store icons globally
+    const blueIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    const greenIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
     window.redIcon = redIcon;
+    window.blueIcon = blueIcon;
+    window.greenIcon = greenIcon;
 
     // 5. STATIC DATA LOAD
     const policeStations = [
@@ -156,6 +171,18 @@ function initializeMap() {
         }
     });
 
+    window.emergencyAgencyData = {
+        Police: policeStations,
+        Fire: fireStations,
+        Medic: hospitals
+    };
+
+    window.emergencyAgencyLayers = {
+        Police: window.policeLayer,
+        Fire: window.fireLayer,
+        Medic: window.hospitalLayer
+    };
+
     // Load reports after map is initialized
     loadReports();
 }
@@ -192,7 +219,100 @@ function normalizeEmergencyCategory(category) {
     if (value === 'police') return 'Police';
     if (value === 'fire') return 'Fire';
     if (value === 'medic' || value === 'medical' || value === 'hospital') return 'Medic';
+    if (value.includes('obstruction') || value.includes('blocked') || value.includes('road')) return 'Police';
     return null;
+}
+
+function escapeMapHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function calculateDistanceKm(lat1, lng1, lat2, lng2) {
+    const radiusKm = 6371;
+    const toRadians = degrees => degrees * Math.PI / 180;
+    const dLat = toRadians(lat2 - lat1);
+    const dLng = toRadians(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+        Math.sin(dLng / 2) ** 2;
+
+    return radiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(distanceKm) {
+    if (!Number.isFinite(distanceKm)) return '';
+    return distanceKm < 1
+        ? `${Math.round(distanceKm * 1000)} m away`
+        : `${distanceKm.toFixed(2)} km away`;
+}
+
+function getNearestAgencies(category, lat, lng, limit = 3) {
+    const agencyType = normalizeEmergencyCategory(category);
+    const agencies = window.emergencyAgencyData?.[agencyType] || [];
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (!agencyType || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return [];
+    }
+
+    return agencies
+        .filter(([agencyName, agencyLat, agencyLng]) => isInsideAllowedMapBounds(agencyLat, agencyLng))
+        .map(([agencyName, agencyLat, agencyLng]) => ({
+            name: agencyName,
+            type: agencyType,
+            distanceKm: calculateDistanceKm(latitude, longitude, agencyLat, agencyLng)
+        }))
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, limit);
+}
+
+function buildNearestAgenciesTooltip(report, lat, lng) {
+    const agencyType = normalizeEmergencyCategory(report.category);
+    const nearestAgencies = getNearestAgencies(report.category, lat, lng);
+
+    if (!agencyType || nearestAgencies.length === 0) {
+        return `
+            <div style="min-width:220px;">
+                <div style="border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:6px;">
+                    <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">Report Details</div>
+                    <div style="font-weight:700;color:#0f172a;margin-top:4px;">${escapeMapHtml((report.category || 'emergency').toUpperCase())}</div>
+                    <div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeMapHtml(report.description || 'No description')}</div>
+                </div>
+                <strong>No matching agency found</strong>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;">Check report type and location.</div>
+            </div>
+        `;
+    }
+
+    const agencyLabel = agencyType === 'Medic' ? 'medical agency' : `${agencyType.toLowerCase()} agency`;
+    const nearestAgency = nearestAgencies[0];
+
+    return `
+        <div style="min-width:220px;">
+            <div style="border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:6px;">
+                <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">Report Details</div>
+                <div style="font-weight:700;color:#0f172a;margin-top:4px;">${escapeMapHtml((report.category || 'emergency').toUpperCase())}</div>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeMapHtml(report.description || 'No description')}</div>
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">
+                Nearest needed ${agencyLabel}
+            </div>
+            <div style="margin-top:6px;display:grid;gap:6px;">
+                ${nearestAgencies.map((agency, index) => `
+                    <div style="border-top:${index === 0 ? '0' : '1px solid #e2e8f0'};padding-top:${index === 0 ? '0' : '6px'};">
+                        <div style="font-weight:700;color:#0f172a;">${escapeMapHtml(agency.name)}</div>
+                        <div style="font-size:12px;color:#64748b;">${escapeMapHtml(formatDistance(agency.distanceKm))}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
 }
 
 function updateActiveCounters() {
@@ -264,58 +384,149 @@ function addIncidentMarker(report) {
     if (!lat || !lng) return false;
     if (!isInsideAllowedMapBounds(lat, lng)) return false;
 
-    const marker = L.marker([lat, lng], { icon: window.redIcon });
+    const category = String(report.category || '').toLowerCase().trim();
+    let icon;
+    if (category === 'police' || category.includes('police')) {
+        icon = window.blueIcon;
+    } else if (category === 'fire') {
+        icon = window.redIcon;
+    } else if (category === 'medic' || category === 'medical' || category === 'hospital') {
+        icon = window.greenIcon;
+    } else {
+        icon = window.redIcon;
+    }
+
+    const marker = L.marker([lat, lng], { icon });
     marker.incidentId = String(id);
     marker.incidentCategory = report.category;
     marker.addTo(window.incidentLayer);
 
     const popupContent = `
-        <div style="text-align: center; max-width: 220px;">
-            <b> ${(report.category || 'emergency').toUpperCase()}</b>
-            <hr>
-            <p>${report.description || 'No description'}</p>
-
+        <div style="min-width:220px; max-width:260px;">
+            <div style="font-size:14px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:6px;">
+                ${escapeMapHtml((report.category || 'emergency').toUpperCase())}
+            </div>
+            <div style="font-size:13px; color:#334155; line-height:1.5;">
+                ${escapeMapHtml(report.description || 'No description provided')}
+            </div>
             ${report.image_url ? `
                 <img src="${report.image_url}"
-                     style="width:100%; border-radius:6px;"
+                     style="width:100%; max-height:120px; object-fit:cover; border-radius:6px; margin-top:8px;"
                      onerror="this.style.display='none'"/>
             ` : ''}
-
+            <div id="nearest-responder-${id}" style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px; font-size:12px; color:#64748b;">
+                Finding nearest responder...
+            </div>
             <button onclick="markAsResolved('${id}')"
-                style="margin-top:8px;width:100%;background:#28a745;color:white;border:none;padding:6px;border-radius:4px;">
+                style="margin-top:10px;width:100%;background:#28a745;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
                 Mark as Done
             </button>
         </div>
     `;
 
     marker.bindPopup(popupContent, {
-        maxWidth: 250,
-        autoPan: true,
-        autoPanPaddingTopLeft: [0, 140],
-        autoPanPaddingBottomRight: [0, 40]
+        maxWidth: 260,
+        minWidth: 260,
+        direction: 'auto',
+        autoPan: false
     });
 
-    // ✅ THIS fixes your "cut popup"
-    marker.on('popupopen', function () {
+    let popupPinned = false;
+    let popupCloseTimer = null;
 
-    // ✅ Step 1: Fix zoom if too far
-    if (map.getZoom() < 14) {
-        map.setView(marker.getLatLng(), 14, { animate: true });
+    function updatePopupResponder() {
+        setTimeout(() => {
+            const el = document.getElementById(`nearest-responder-${id}`);
+            if (!el) return;
+            const nearestAgencies = getNearestAgencies(report.category, lat, lng);
+            if (nearestAgencies.length > 0) {
+                const nearest = nearestAgencies[0];
+                el.innerHTML = `
+                    <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest.name)}</div>
+                    <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest.distanceKm))}</div>
+                `;
+            } else {
+                el.innerHTML = `<span style="color:#94a3b8;">No nearby responder found</span>`;
+            }
+        }, 60);
     }
 
-    // ✅ Step 2: Pan AFTER zoom
-    setTimeout(() => {
-        const px = map.project(marker.getLatLng());
-        px.y -= 160;
-        map.panTo(map.unproject(px), { animate: true });
-    }, 300);
+    marker.on('mouseover', function () {
+        clearTimeout(popupCloseTimer);
+        if (!popupPinned) {
+            map.dragging.disable();
+            marker.openPopup();
+        }
+        updatePopupResponder();
+    });
 
-});
+    marker.on('mouseout', function () {
+        if (!popupPinned) {
+            popupCloseTimer = setTimeout(() => {
+                marker.closePopup();
+                map.dragging.enable();
+            }, 600);
+        }
+    });
+
+    marker.on('click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        clearTimeout(popupCloseTimer);
+        popupPinned = !popupPinned;
+        if (popupPinned) {
+            map.dragging.enable();
+            marker.openPopup();
+            updatePopupResponder();
+            if (marker.isPopupOpen()) {
+                if (map.getZoom() < 14) {
+                    map.setView(marker.getLatLng(), 14, { animate: true });
+                }
+                setTimeout(() => {
+                    const px = map.project(marker.getLatLng());
+                    px.y -= 160;
+                    map.panTo(map.unproject(px), { animate: true });
+                }, 300);
+            }
+        } else {
+            marker.closePopup();
+            map.dragging.enable();
+        }
+    });
+
+    map.on('click', function () {
+        if (popupPinned) {
+            popupPinned = false;
+            marker.closePopup();
+            map.dragging.enable();
+        }
+    });
+
+    marker.on('popupclose', function () {
+        if (popupPinned) {
+            marker.openPopup();
+        }
+    });
+
+    marker.on('popupopen', function () {
+        const el = document.getElementById(`nearest-responder-${id}`);
+        if (!el) return;
+        const nearestAgencies = getNearestAgencies(report.category, lat, lng);
+        if (nearestAgencies.length > 0) {
+            const nearest = nearestAgencies[0];
+            el.innerHTML = `
+                <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest.name)}</div>
+                <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest.distanceKm))}</div>
+            `;
+        } else {
+            el.innerHTML = `<span style="color:#94a3b8;">No nearby responder found</span>`;
+        }
+        updatePopupResponder();
+    });
 
     return true;
 }
 async function markAsResolved(incidentId) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
         .from('incidents')
         .update({ status: 'resolved' }) 
         .eq('id', incidentId)
