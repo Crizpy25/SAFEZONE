@@ -1,219 +1,218 @@
-// State for GPS Tracking
-let trackingMarkers = new Map();
-let map; // Declare map globally
+const ILOILO_CITY_POLYGON = [
+    [10.681785655878944, 122.49474249009371],
+    [10.694886448077998, 122.49859467332405],
+    [10.73921342221657, 122.51279715388304],
+    [10.760570904305848, 122.54115700985388],
+    [10.78341690543084, 122.56550180260652],
+    [10.76085574961492, 122.59561258959526],
+    [10.736986291533862, 122.59902560515846],
+    [10.720655712205213, 122.60094906731678],
+    [10.686816359886635, 122.5814726847861]
+];
 
-const allowedMapBounds = {
-    north: 10.77,
-    south: 10.67,
-    west: 122.47,
-    east: 122.60
-};
+const trackingMarkers = new Map();
+let map = null;
 
-function isInsideAllowedMapBounds(lat, lng) {
-    const latitude = Number(lat);
-    const longitude = Number(lng);
+function animateMarkerMovement(marker, fromLat, fromLng, toLat, toLng) {
+    const duration = 900;
+    const start = performance.now();
+    const from = L.latLng(fromLat, fromLng);
+    const to = L.latLng(toLat, toLng);
+    const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        return false;
+    function step(now) {
+        const progress = Math.min((now - start) / duration, 1);
+        const latLng = L.latLng(
+            from.lat + (to.lat - from.lat) * ease(progress),
+            from.lng + (to.lng - from.lng) * ease(progress)
+        );
+        marker.setLatLng(latLng);
+        if (progress < 1) requestAnimationFrame(step);
+        else marker.setLatLng(to);
     }
-
-    return latitude >= allowedMapBounds.south &&
-        latitude <= allowedMapBounds.north &&
-        longitude >= allowedMapBounds.west &&
-        longitude <= allowedMapBounds.east;
+    requestAnimationFrame(step);
 }
 
-// Initialize map after DOM is ready
+function isPointInPolygon(lat, lng) {
+    const ptLat = Number(lat);
+    const ptLng = Number(lng);
+    if (!Number.isFinite(ptLat) || !Number.isFinite(ptLng)) return false;
+
+    let inside = false;
+    for (let i = 0, j = ILOILO_CITY_POLYGON.length - 1; i < ILOILO_CITY_POLYGON.length; j = i++) {
+        const lat_i = ILOILO_CITY_POLYGON[i][0];
+        const lat_j = ILOILO_CITY_POLYGON[j][0];
+        const lng_i = ILOILO_CITY_POLYGON[i][1];
+        const lng_j = ILOILO_CITY_POLYGON[j][1];
+        if (((lat_i > ptLat) !== (lat_j > ptLat)) && (ptLng < (lng_j - lng_i) * (ptLat - lat_i) / (lat_j - lat_i) + lng_i)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function getPolygonBounds() {
+    const lats = ILOILO_CITY_POLYGON.map(p => p[0]);
+    const lngs = ILOILO_CITY_POLYGON.map(p => p[1]);
+    const south = Math.min(...lats) - 0.003;
+    const north = Math.max(...lats);
+    const west = Math.min(...lngs);
+    const east = Math.max(...lngs);
+    return L.latLngBounds([south, west], [north, east]);
+}
+
 function initializeMap() {
-    console.log('Initializing map...');
-    
-    // Check if map element exists
-    const mapElement = document.getElementById('map');
-    if (!mapElement) {
-        console.error('Map element not found');
+    const mapEl = document.getElementById('map');
+    if (!mapEl) {
+        console.error('Map container #map not found');
+        return;
+    }
+    if (!window.L) {
+        console.error('Leaflet is not loaded');
         return;
     }
 
-    console.log('Map element found, creating Leaflet map...');
-
-    // 2. MAP SETUP
-    const bounds = L.latLngBounds(
-        [allowedMapBounds.south, allowedMapBounds.west], // Southwest corner
-        [allowedMapBounds.north, allowedMapBounds.east]  // Northeast corner
-    );
-
+    const bounds = getPolygonBounds();
     map = L.map('map', {
         minZoom: 13.2,
         maxZoom: 18,
         maxBounds: bounds,
-        maxBoundsViscosity: 0.7
-    }).setView([10.7202, 122.5555], 13);
-
-    console.log('Map created successfully');
+        maxBoundsViscosity: 0.3
+    }).setView([10.7202, 122.5855], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
+        attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // 3. LAYER GROUPS
-    window.policeLayer = L.layerGroup();
-    window.fireLayer = L.layerGroup();
-    window.hospitalLayer = L.layerGroup();
-    window.incidentLayer = L.layerGroup().addTo(map); 
-    window.trackingLayer = L.layerGroup().addTo(map); 
+    window.policeLayer = L.layerGroup().addTo(map);
+    window.fireLayer = L.layerGroup().addTo(map);
+    window.hospitalLayer = L.layerGroup().addTo(map);
+    window.incidentLayer = L.layerGroup().addTo(map);
+    window.trackingLayer = L.layerGroup().addTo(map);
 
-    // 4. ICONS
     const policeIcon = L.icon({
-        iconUrl: "images/police.png",
+        iconUrl: 'images/police.png',
         iconSize: [30, 30],
         iconAnchor: [17, 35],
         popupAnchor: [0, -35]
     });
-
     const fireIcons = L.icon({
-        iconUrl: "images/fire.png",
+        iconUrl: 'images/fire.png',
         iconSize: [30, 30],
         iconAnchor: [17, 35],
         popupAnchor: [0, -35]
     });
-
     const hospitalIcon = L.icon({
-        iconUrl: "images/hospital.png",
+        iconUrl: 'images/hospital.png',
         iconSize: [30, 30],
         iconAnchor: [17, 35],
         popupAnchor: [0, -35]
     });
-
-    const redIcon = L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    const markerIcon = (url) => L.icon({
+        iconUrl: url,
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
         iconSize: [25, 41],
         iconAnchor: [12, 41],
         popupAnchor: [1, -34],
         shadowSize: [41, 41]
     });
+    window.redIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png');
+    window.blueIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png');
+    window.greenIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png');
 
-    const blueIcon = L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
-
-    const greenIcon = L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
-
-    window.redIcon = redIcon;
-    window.blueIcon = blueIcon;
-    window.greenIcon = greenIcon;
-
-    // 5. STATIC DATA LOAD
-    const policeStations = [
-        ["PS1 City Proper",10.701501994092405, 122.56369039944839],
-        ["PS2 La Paz",10.70552222109631, 122.56549995693831],
-        ["PS3 Jaro",10.71560226623802, 122.56266469623272],
-        ["Molo Police Station",10.698346304433658, 122.55105476464729],
-        ["PS5 Mandurriao",10.71683400704982,122.53648059623264],
-        ["Arevalo Police Station",10.68890021276814, 122.51886825833218],
-        ["PS7 Lapuz",10.693878433584727, 122.55874469935698],
-        ["Sambag Police Assistant",10.742333401995415, 122.5409438842518],
-        ["Ungka Police Station",10.747512542219782, 122.54008363707585],
-        ["ICPO Police Station 9",10.7272054892569, 122.56710895228002],
-        ["ICPO Police Station 10",10.70553584277189, 122.55517513417514]
+    const stations = [
+        { name: 'PS1 City Proper', lat: 10.701501994092405, lng: 122.56369039944839, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS2 La Paz', lat: 10.70552222109631, lng: 122.56549995693831, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS3 Jaro', lat: 10.71560226623802, lng: 122.56266469623272, icon: policeIcon, layer: window.policeLayer },
+        { name: 'Molo Police Station', lat: 10.698346304433658, lng: 122.55105476464729, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS5 Mandurriao', lat: 10.71683400704982, lng: 122.53648059623264, icon: policeIcon, layer: window.policeLayer },
+        { name: 'Arevalo Police Station', lat: 10.68890021276814, lng: 122.51886825833218, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS7 Lapuz', lat: 10.693878433584727, lng: 122.55874469935698, icon: policeIcon, layer: window.policeLayer },
+        { name: 'Sambag Police Assistant', lat: 10.742333401995415, lng: 122.5409438842518, icon: policeIcon, layer: window.policeLayer },
+        { name: 'Ungka Police Station', lat: 10.747512542219782, lng: 122.54008363707585, icon: policeIcon, layer: window.policeLayer },
+        { name: 'ICPO Police Station 9', lat: 10.7272054892569, lng: 122.56710895228002, icon: policeIcon, layer: window.policeLayer },
+        { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
+        { name: 'La Paz Fire Sub-Station', lat: 10.712651852092284, lng: 122.57295111469945, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Federation Iloilo Fire Station', lat: 10.698697241164309, lng: 122.57076622219913, icon: fireIcons, layer: window.fireLayer },
+        { name: 'BFP Iloilo', lat: 10.690705849929284, lng: 122.58144791800282, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Bo. Obrero Fire Sub-Station', lat: 10.702275407727985, lng: 122.59067301967075, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Mandurriao Fire Sub-Station', lat: 10.719211489646474, lng: 122.53920666146492, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Arevalo Fire Sub-Station', lat: 10.688797426748417, lng: 122.51626529021178, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Sto. Niño Sur Fire Sub-Station', lat: 10.68223713089546, lng: 122.5099533777009, icon: fireIcons, layer: window.fireLayer },
+        { name: 'BFP Jaro', lat: 10.72744065268221, lng: 122.56251218153137, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Ungka Fire Sub-Station', lat: 10.74690941039231, lng: 122.53931659330536, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Old Molo Fire Station', lat: 10.697030999439814, lng: 122.5488881609591, icon: fireIcons, layer: window.fireLayer },
+        { name: 'San Isidro Fire Sub-Station', lat: 10.736444550002995, lng: 122.5458557423291, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Western Visayas Medical Center (Public)', lat: 10.718885489071287, lng: 122.54193891896666, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: 'Iloilo Mission Hospital', lat: 10.714817707214994, lng: 122.56058274040979, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: "St. Paul's Hospital Iloilo", lat: 10.702011896133618, lng: 122.56694877109325, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: "Iloilo Doctors' Hospital", lat: 10.696804152759018, lng: 122.55440768089073, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: 'The Medical City Iloilo', lat: 10.699644543003238, lng: 122.54277137544258, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: 'West Visayas State University Medical Center', lat: 10.717168244196454, lng: 122.56120580362972, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: 'QualiMed Hospital Iloilo', lat: 10.706542561402188, lng: 122.54782241379408, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: 'Medicus Medical Center', lat: 10.702756754480117, lng: 122.55224702393059, icon: hospitalIcon, layer: window.hospitalLayer },
+        { name: "AMOSUP Seamen's Hospital", lat: 10.714828158629505, lng: 122.53455543124073, icon: hospitalIcon, layer: window.hospitalLayer }
     ];
-    policeStations.forEach(s => {
-        if (isInsideAllowedMapBounds(s[1], s[2])) {
-            L.marker([s[1], s[2]], {icon: policeIcon}).addTo(window.policeLayer).bindPopup(s[0]);
-        }
-    });
 
-    const fireStations = [
-        ["La Paz Fire Sub-Station", 10.712651852092284, 122.57295111469945],
-        ["Federation Iloilo Fire Station", 10.698697241164309, 122.57076622219913],
-        ["BFP Iloilo", 10.690705849929284, 122.58144791800282],
-        ["Bo. Obrero Fire Sub-Station", 10.702275407727985, 122.59067301967075],
-        ["Mandurriao Fire Sub-Station", 10.719211489646474, 122.53920666146492],
-        ["Arevalo Fire Sub-Station", 10.688797426748417, 122.51626529021178],
-        ["Sto. Niño Sur Fire Sub-Station", 10.68223713089546, 122.5099533777009],
-        ["BFP Jaro", 10.72744065268221, 122.56251218153137],
-        ["Ungka Fire Sub-Station", 10.74690941039231, 122.53931659330536],
-        ["Old Molo Fire Station", 10.697030999439814, 122.5488881609591],
-        ["San Isidro Fire Sub-Station", 10.736444550002995, 122.5458557423291]
-    ];
-    fireStations.forEach(s => {
-        if (isInsideAllowedMapBounds(s[1], s[2])) {
-            L.marker([s[1], s[2]], {icon: fireIcons}).addTo(window.fireLayer).bindPopup(s[0]);
-        }
-    });
-
-    const hospitals = [
-        ["Western Visayas Medical Center (Public)", 10.718885489071287, 122.54193891896666],
-        ["Iloilo Mission Hospital", 10.714817707214994, 122.56058274040979],
-        ["St. Paul's Hospital Iloilo", 10.702011896133618, 122.56694877109325],
-        ["Iloilo Doctors' Hospital", 10.696804152759018, 122.55440768089073],
-        ["The Medical City Iloilo", 10.699644543003238, 122.54277137544258],
-        ["West Visayas State University Medical Center", 10.717168244196454, 122.56120580362972],
-        ["QualiMed Hospital Iloilo", 10.706542561402188, 122.54782241379408],
-        ["Medicus Medical Center", 10.702756754480117, 122.55224702393059],
-        ["AMOSUP Seamen's Hospital", 10.714828158629505, 122.53455543124073],
-    ];
-    hospitals.forEach(s => {
-        if (isInsideAllowedMapBounds(s[1], s[2])) {
-            L.marker([s[1], s[2]], {icon: hospitalIcon}).addTo(window.hospitalLayer).bindPopup(s[0]);
-        }
+    stations.forEach(s => {
+        if (!isPointInPolygon(s.lat, s.lng)) return;
+        L.marker([s.lat, s.lng], { icon: s.icon }).addTo(s.layer).bindPopup(s.name);
     });
 
     window.emergencyAgencyData = {
-        Police: policeStations,
-        Fire: fireStations,
-        Medic: hospitals
+        Police: stations.filter(s => s.layer === window.policeLayer).map(s => [s.name, s.lat, s.lng]),
+        Fire: stations.filter(s => s.layer === window.fireLayer).map(s => [s.name, s.lat, s.lng]),
+        Medic: stations.filter(s => s.layer === window.hospitalLayer).map(s => [s.name, s.lat, s.lng])
     };
-
     window.emergencyAgencyLayers = {
         Police: window.policeLayer,
         Fire: window.fireLayer,
         Medic: window.hospitalLayer
     };
 
-    // Load reports after map is initialized
     loadReports();
+
+    setTimeout(() => {
+        try { map.invalidateSize(); } catch (e) { /* ignore */ }
+    }, 100);
+
+    setTimeout(refreshToggleState, 50);
 }
 
-// 6. TOGGLE FUNCTIONS
-function togglePolice() { 
-    if (!map) return;
-    map.hasLayer(window.policeLayer) ? map.removeLayer(window.policeLayer) : window.policeLayer.addTo(map); 
-}
-
-function toggleFire() { 
-    if (!map) return;
-    map.hasLayer(window.fireLayer) ? map.removeLayer(window.fireLayer) : window.fireLayer.addTo(map); 
-}
-
-function toggleHospital() { 
-    if (!map) return;
-    map.hasLayer(window.hospitalLayer) ? map.removeLayer(window.hospitalLayer) : window.hospitalLayer.addTo(map); 
-}
-
-function showAllLayers() {
+function toggleAll() {
     if (!map) return;
     const allVisible = map.hasLayer(window.policeLayer) && map.hasLayer(window.fireLayer) && map.hasLayer(window.hospitalLayer);
-    if (allVisible) {
-        [window.policeLayer, window.fireLayer, window.hospitalLayer].forEach(l => map.removeLayer(l));
-    } else {
-        [window.policeLayer, window.fireLayer, window.hospitalLayer].forEach(l => l.addTo(map));
-    }
+    [window.policeLayer, window.fireLayer, window.hospitalLayer].forEach(l => allVisible ? map.removeLayer(l) : l.addTo(map));
+    refreshToggleState();
+}
+function togglePolice() {
+    if (!map) return;
+    map.hasLayer(window.policeLayer) ? map.removeLayer(window.policeLayer) : window.policeLayer.addTo(map);
+    refreshToggleState();
+}
+function toggleFire() {
+    if (!map) return;
+    map.hasLayer(window.fireLayer) ? map.removeLayer(window.fireLayer) : window.fireLayer.addTo(map);
+    refreshToggleState();
+}
+function toggleHospital() {
+    if (!map) return;
+    map.hasLayer(window.hospitalLayer) ? map.removeLayer(window.hospitalLayer) : window.hospitalLayer.addTo(map);
+    refreshToggleState();
+}
+function refreshToggleState() {
+    if (!map) return;
+    const allVisible = map.hasLayer(window.policeLayer) && map.hasLayer(window.fireLayer) && map.hasLayer(window.hospitalLayer);
+    ['btnPolice', 'btnFire', 'btnHospital'].forEach((btnId) => {
+        const layerMap = { btnPolice: window.policeLayer, btnFire: window.fireLayer, btnHospital: window.hospitalLayer };
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.style.opacity = map.hasLayer(layerMap[btnId]) ? '1' : '0.45';
+    });
+    const allBtn = document.getElementById('btnAll');
+    if (allBtn) allBtn.textContent = allVisible ? 'Hide All Stations' : 'Show All Stations';
 }
 
-// 7. SUPABASE DYNAMIC LOGIC (Incidents & GPS)
 function normalizeEmergencyCategory(category) {
     const value = String(category || '').toLowerCase().trim();
     if (value === 'police') return 'Police';
@@ -233,22 +232,17 @@ function escapeMapHtml(value) {
 }
 
 function calculateDistanceKm(lat1, lng1, lat2, lng2) {
-    const radiusKm = 6371;
-    const toRadians = degrees => degrees * Math.PI / 180;
-    const dLat = toRadians(lat2 - lat1);
-    const dLng = toRadians(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
-        Math.sin(dLng / 2) ** 2;
-
-    return radiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const R = 6371;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDistance(distanceKm) {
     if (!Number.isFinite(distanceKm)) return '';
-    return distanceKm < 1
-        ? `${Math.round(distanceKm * 1000)} m away`
-        : `${distanceKm.toFixed(2)} km away`;
+    return distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m away` : `${distanceKm.toFixed(2)} km away`;
 }
 
 function getNearestAgencies(category, lat, lng, limit = 3) {
@@ -256,17 +250,14 @@ function getNearestAgencies(category, lat, lng, limit = 3) {
     const agencies = window.emergencyAgencyData?.[agencyType] || [];
     const latitude = Number(lat);
     const longitude = Number(lng);
-
-    if (!agencyType || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        return [];
-    }
+    if (!agencyType || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
 
     return agencies
-        .filter(([agencyName, agencyLat, agencyLng]) => isInsideAllowedMapBounds(agencyLat, agencyLng))
-        .map(([agencyName, agencyLat, agencyLng]) => ({
-            name: agencyName,
+        .filter(([, aLat, aLng]) => isPointInPolygon(aLat, aLng))
+        .map(([name, aLat, aLng]) => ({
+            name,
             type: agencyType,
-            distanceKm: calculateDistanceKm(latitude, longitude, agencyLat, agencyLng)
+            distanceKm: calculateDistanceKm(latitude, longitude, aLat, aLng)
         }))
         .sort((a, b) => a.distanceKm - b.distanceKm)
         .slice(0, limit);
@@ -274,24 +265,17 @@ function getNearestAgencies(category, lat, lng, limit = 3) {
 
 function buildNearestAgenciesTooltip(report, lat, lng) {
     const agencyType = normalizeEmergencyCategory(report.category);
-    const nearestAgencies = getNearestAgencies(report.category, lat, lng);
+    const nearest = getNearestAgencies(report.category, lat, lng);
+    const agencyLabel = agencyType === 'Medic' ? 'medical agency' : `${agencyType?.toLowerCase() || 'emergency'} agency`;
 
-    if (!agencyType || nearestAgencies.length === 0) {
-        return `
-            <div style="min-width:220px;">
-                <div style="border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:6px;">
-                    <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">Report Details</div>
-                    <div style="font-weight:700;color:#0f172a;margin-top:4px;">${escapeMapHtml((report.category || 'emergency').toUpperCase())}</div>
-                    <div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeMapHtml(report.description || 'No description')}</div>
-                </div>
-                <strong>No matching agency found</strong>
-                <div style="font-size:12px;color:#64748b;margin-top:4px;">Check report type and location.</div>
+    const listHtml = nearest.length
+        ? nearest.map(a => `
+            <div style="margin-top:6px;">
+              <div style="font-weight:700;color:#0f172a;">${escapeMapHtml(a.name)}</div>
+              <div style="font-size:12px;color:#64748b;">${escapeMapHtml(formatDistance(a.distanceKm))}</div>
             </div>
-        `;
-    }
-
-    const agencyLabel = agencyType === 'Medic' ? 'medical agency' : `${agencyType.toLowerCase()} agency`;
-    const nearestAgency = nearestAgencies[0];
+          `).join('')
+        : `<span style="color:#94a3b8;">No nearby responder found</span>`;
 
     return `
         <div style="min-width:220px;">
@@ -300,44 +284,178 @@ function buildNearestAgenciesTooltip(report, lat, lng) {
                 <div style="font-weight:700;color:#0f172a;margin-top:4px;">${escapeMapHtml((report.category || 'emergency').toUpperCase())}</div>
                 <div style="font-size:12px;color:#64748b;margin-top:4px;">${escapeMapHtml(report.description || 'No description')}</div>
             </div>
-            <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">
-                Nearest needed ${agencyLabel}
-            </div>
-            <div style="margin-top:6px;display:grid;gap:6px;">
-                ${nearestAgencies.map((agency, index) => `
-                    <div style="border-top:${index === 0 ? '0' : '1px solid #e2e8f0'};padding-top:${index === 0 ? '0' : '6px'};">
-                        <div style="font-weight:700;color:#0f172a;">${escapeMapHtml(agency.name)}</div>
-                        <div style="font-size:12px;color:#64748b;">${escapeMapHtml(formatDistance(agency.distanceKm))}</div>
-                    </div>
-                `).join('')}
-            </div>
+            <div style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;">Nearest needed ${agencyLabel}</div>
+            <div style="margin-top:6px;">${listHtml}</div>
         </div>
     `;
 }
 
-function updateActiveCounters() {
-    const counts = {
-        Police: 0,
-        Fire: 0,
-        Medic: 0
-    };
-    
+function closeCategoryReports() {
+    const panel = document.getElementById('categoryReportsPanel');
+    if (panel) panel.classList.add('hidden');
+}
+
+function showNewReportToast(report) {
+    const toast = document.getElementById('newReportToast');
+    const text = document.getElementById('newReportToastText');
+    if (!toast || !text) return;
+    const category = report.category ? report.category.toUpperCase() : 'EMERGENCY';
+    const desc = report.description ? `: ${report.description}` : '';
+    const time = report.created_at ? new Date(report.created_at).toLocaleTimeString() : '';
+    text.innerHTML = `<strong>${category}</strong>${desc}<br><span style="opacity:.85">${time}</span>`;
+    toast.classList.remove('hidden');
+    clearTimeout(toast._timeout);
+    toast._timeout = setTimeout(() => toast.classList.add('hidden'), 6000);
+}
+
+function showCategoryReports(category) {
+    const panel = document.getElementById('categoryReportsPanel');
+    const titleEl = document.getElementById('categoryReportsTitle');
+    const listEl = document.getElementById('categoryReportsList');
+    const noReportsEl = document.getElementById('categoryNoReports');
+
+    if (!panel || !listEl) return;
+
+    const reports = [];
     if (window.incidentLayer) {
         window.incidentLayer.eachLayer(layer => {
-            const category = normalizeEmergencyCategory(layer.incidentCategory);
-            if (category) {
-                counts[category] += 1;
+            if (normalizeEmergencyCategory(layer.incidentCategory) === category) {
+                reports.push({
+                    id: layer.incidentId,
+                    category: layer.incidentCategory,
+                    lat: layer.getLatLng().lat,
+                    lng: layer.getLatLng().lng
+                });
             }
         });
     }
-    
+
+    reports.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+
+    if (titleEl) titleEl.textContent = category;
+
+    if (!reports.length) {
+        listEl.innerHTML = '';
+        if (noReportsEl) noReportsEl.classList.remove('hidden');
+    } else {
+        if (noReportsEl) noReportsEl.classList.add('hidden');
+        listEl.innerHTML = reports.map(r => `
+            <div class="bg-white/60 rounded-lg p-3 flex items-center justify-between mb-1 last:mb-0">
+                <div>
+                    <p class="text-gray-800 font-bold text-xs uppercase">${escapeMapHtml(r.category)}</p>
+                    <p class="text-gray-600 text-[10px]">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</p>
+                </div>
+                <button onclick="panToIncident('${r.id}'); closeCategoryReports();" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold px-2 py-1 rounded ml-2 shrink-0">View</button>
+            </div>
+        `).join('');
+    }
+
+    panel.classList.remove('hidden');
+}
+
+function showAllReports() {
+    const panel = document.getElementById('categoryReportsPanel');
+    const titleEl = document.getElementById('categoryReportsTitle');
+    const listEl = document.getElementById('categoryReportsList');
+    const noReportsEl = document.getElementById('categoryNoReports');
+
+    if (!panel || !listEl) return;
+
+    const reports = [];
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            reports.push({
+                id: layer.incidentId,
+                category: layer.incidentCategory,
+                lat: layer.getLatLng().lat,
+                lng: layer.getLatLng().lng
+            });
+        });
+    }
+
+    reports.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+
+    if (titleEl) titleEl.textContent = 'All Reports';
+
+    if (!reports.length) {
+        listEl.innerHTML = '';
+        if (noReportsEl) noReportsEl.classList.remove('hidden');
+    } else {
+        if (noReportsEl) noReportsEl.classList.add('hidden');
+        listEl.innerHTML = reports.map(r => `
+            <div class="bg-white/60 rounded-lg p-3 flex items-center justify-between mb-1 last:mb-0">
+                <div>
+                    <p class="text-gray-800 font-bold text-xs uppercase">${escapeMapHtml(r.category)}</p>
+                    <p class="text-gray-600 text-[10px]">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</p>
+                </div>
+                <button onclick="panToIncident('${r.id}'); closeCategoryReports();" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold px-2 py-1 rounded ml-2 shrink-0">View</button>
+            </div>
+        `).join('');
+    }
+
+    panel.classList.remove('hidden');
+}
+
+function updateActiveCounters() {
+    const counts = { Police: 0, Fire: 0, Medic: 0 };
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            const category = normalizeEmergencyCategory(layer.incidentCategory);
+            if (category) counts[category] += 1;
+        });
+    }
     const policeEl = document.getElementById('policeCount');
     const fireEl = document.getElementById('fireCount');
     const medicEl = document.getElementById('medicCount');
-    
     if (policeEl) policeEl.textContent = counts.Police;
     if (fireEl) fireEl.textContent = counts.Fire;
     if (medicEl) medicEl.textContent = counts.Medic;
+    updateReportsList();
+}
+
+function updateReportsList() {
+    const listEl = document.getElementById('reportsList');
+    const noReportsEl = document.getElementById('noReports');
+    if (!listEl) return;
+
+    const reports = [];
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            reports.push({
+                id: layer.incidentId,
+                category: layer.incidentCategory,
+                lat: layer.getLatLng().lat,
+                lng: layer.getLatLng().lng
+            });
+        });
+    }
+
+    if (!reports.length) {
+        listEl.innerHTML = '';
+        if (noReportsEl) noReportsEl.classList.remove('hidden');
+        return;
+    }
+
+    if (noReportsEl) noReportsEl.classList.add('hidden');
+    listEl.innerHTML = reports.map(r => `
+        <div class="bg-white/20 rounded-lg p-3 flex items-center justify-between">
+            <div>
+                <p class="text-white font-bold text-sm uppercase">${escapeMapHtml(r.category)}</p>
+                <p class="text-white/70 text-xs">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</p>
+            </div>
+            <button onclick="panToIncident('${r.id}')" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded">View</button>
+        </div>
+    `).join('');
+}
+
+function panToIncident(id) {
+    if (!window.incidentLayer) return;
+    window.incidentLayer.eachLayer(layer => {
+        if (String(layer.incidentId) === String(id)) {
+            map.flyTo(layer.getLatLng(), 15, { animate: true });
+            layer.openPopup();
+        }
+    });
 }
 
 async function loadReports() {
@@ -345,26 +463,19 @@ async function loadReports() {
         console.warn('Map not initialized yet');
         return;
     }
-    
     try {
-        console.log('Loading reports from Supabase...');
         const { data, error } = await window.supabaseClient
             .from('incidents')
             .select('*')
-            .not('status', 'eq', 'resolved'); 
+            .not('status', 'eq', 'resolved');
 
         if (error) {
             console.error('Error loading reports:', error);
             return;
         }
-        
-        if (!data) {
-            console.warn('No data returned from incidents table');
-            return;
-        }
-        
-        console.log('Reports loaded:', data.length, 'incidents');
-        window.incidentLayer.clearLayers(); 
+        if (!data) return;
+
+        window.incidentLayer.clearLayers();
         data.forEach(report => addIncidentMarker(report));
         updateActiveCounters();
     } catch (err) {
@@ -374,32 +485,20 @@ async function loadReports() {
 
 function addIncidentMarker(report) {
     if (!map) return false;
-    
+
     const id = report.id;
-    if (!id) return false;
-    if (report.status === 'resolved') return false;
+    if (!id || report.status === 'resolved') return false;
 
     const lat = report.latitude || report.lat;
     const lng = report.longitude || report.long || report.longtitude;
-    if (!lat || !lng) return false;
-    if (!isInsideAllowedMapBounds(lat, lng)) return false;
+    if (!lat || !lng || !isPointInPolygon(lat, lng)) return false;
 
     const category = String(report.category || '').toLowerCase().trim();
-    let icon;
-    if (category === 'police' || category.includes('police')) {
-        icon = window.blueIcon;
-    } else if (category === 'fire') {
-        icon = window.redIcon;
-    } else if (category === 'medic' || category === 'medical' || category === 'hospital') {
-        icon = window.greenIcon;
-    } else {
-        icon = window.redIcon;
-    }
+    const icon = category.includes('police') ? window.blueIcon : category === 'fire' ? window.redIcon : category.includes('medic') || category.includes('medical') || category.includes('hospital') ? window.greenIcon : window.redIcon;
 
-    const marker = L.marker([lat, lng], { icon });
+    const marker = L.marker([lat, lng], { icon }).addTo(window.incidentLayer);
     marker.incidentId = String(id);
     marker.incidentCategory = report.category;
-    marker.addTo(window.incidentLayer);
 
     const popupContent = `
         <div style="min-width:220px; max-width:260px;">
@@ -424,12 +523,7 @@ function addIncidentMarker(report) {
         </div>
     `;
 
-    marker.bindPopup(popupContent, {
-        maxWidth: 260,
-        minWidth: 260,
-        direction: 'auto',
-        autoPan: false
-    });
+    marker.bindPopup(popupContent, { maxWidth: 260, minWidth: 260, direction: 'auto', autoPan: false });
 
     let popupPinned = false;
     let popupCloseTimer = null;
@@ -438,12 +532,11 @@ function addIncidentMarker(report) {
         setTimeout(() => {
             const el = document.getElementById(`nearest-responder-${id}`);
             if (!el) return;
-            const nearestAgencies = getNearestAgencies(report.category, lat, lng);
-            if (nearestAgencies.length > 0) {
-                const nearest = nearestAgencies[0];
+            const nearest = getNearestAgencies(report.category, lat, lng);
+            if (nearest.length) {
                 el.innerHTML = `
-                    <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest.name)}</div>
-                    <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest.distanceKm))}</div>
+                    <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest[0].name)}</div>
+                    <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest[0].distanceKm))}</div>
                 `;
             } else {
                 el.innerHTML = `<span style="color:#94a3b8;">No nearby responder found</span>`;
@@ -477,16 +570,14 @@ function addIncidentMarker(report) {
             map.dragging.enable();
             marker.openPopup();
             updatePopupResponder();
-            if (marker.isPopupOpen()) {
-                if (map.getZoom() < 14) {
-                    map.setView(marker.getLatLng(), 14, { animate: true });
-                }
-                setTimeout(() => {
-                    const px = map.project(marker.getLatLng());
-                    px.y -= 160;
-                    map.panTo(map.unproject(px), { animate: true });
-                }, 300);
+            if (marker.isPopupOpen() && map.getZoom() < 14) {
+                map.setView(marker.getLatLng(), 14, { animate: true });
             }
+            setTimeout(() => {
+                const px = map.project(marker.getLatLng());
+                px.y -= 160;
+                map.panTo(map.unproject(px), { animate: true });
+            }, 300);
         } else {
             marker.closePopup();
             map.dragging.enable();
@@ -502,20 +593,17 @@ function addIncidentMarker(report) {
     });
 
     marker.on('popupclose', function () {
-        if (popupPinned) {
-            marker.openPopup();
-        }
+        if (popupPinned) marker.openPopup();
     });
 
     marker.on('popupopen', function () {
         const el = document.getElementById(`nearest-responder-${id}`);
         if (!el) return;
-        const nearestAgencies = getNearestAgencies(report.category, lat, lng);
-        if (nearestAgencies.length > 0) {
-            const nearest = nearestAgencies[0];
+        const nearest = getNearestAgencies(report.category, lat, lng);
+        if (nearest.length) {
             el.innerHTML = `
-                <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest.name)}</div>
-                <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest.distanceKm))}</div>
+                <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest: ${escapeMapHtml(nearest[0].name)}</div>
+                <div style="font-size:11px; color:#64748b;">${escapeMapHtml(formatDistance(nearest[0].distanceKm))}</div>
             `;
         } else {
             el.innerHTML = `<span style="color:#94a3b8;">No nearby responder found</span>`;
@@ -525,12 +613,13 @@ function addIncidentMarker(report) {
 
     return true;
 }
+
 async function markAsResolved(incidentId) {
     const { data, error } = await window.supabaseClient
         .from('incidents')
-        .update({ status: 'resolved' }) 
+        .update({ status: 'resolved' })
         .eq('id', incidentId)
-        .select(); 
+        .select();
 
     if (error) {
         console.error("Database Error:", error.message);
@@ -543,88 +632,22 @@ async function markAsResolved(incidentId) {
     }
 }
 
-// 8. REAL-TIME SUBSCRIPTION (CLEANED & CONSOLIDATED)
-supabaseClient
-  .channel('map-updates')
-
-  // ---------------- NEW INCIDENTS ----------------
-  .on('postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'incidents' },
-    (payload) => {
-      console.log("New incident received:", payload.new);
-
-      const markerAdded = addIncidentMarker(payload.new);
-
-      if (!markerAdded) {
-        return;
-      }
-      
-      updateActiveCounters();
-
-      // alert sound
-      new Audio('https://www.soundjay.com/buttons/beep-01a.mp3')
-        .play()
-        .catch(() => console.log("Audio blocked"));
-
-      // focus map
-      const lat = payload.new.latitude || payload.new.lat;
-      const lng = payload.new.longitude || payload.new.long;
-
-      if (lat && lng && isInsideAllowedMapBounds(lat, lng)) {
-        map.flyTo([lat, lng], 15);
-      }
-    }
-  )
-
-  // ---------------- STATUS UPDATES ----------------
-  .on('postgres_changes',
-    { event: 'UPDATE', schema: 'public', table: 'incidents' },
-    (payload) => {
-
-      console.log("Incident update detected:", payload.new);
-
-      const id = String(payload.new.id);
-      const status = (payload.new.status || '').toLowerCase().trim();
-
-      if (status === 'resolved') {
-        removeMarkerFromMap(id);
-        updateActiveCounters();
-        return;
-      }
-
-      if (status === 'active') {
-        // prevent duplicate markers
-        removeMarkerFromMap(id);
-        addIncidentMarker(payload.new);
-        updateActiveCounters();
-      }
-    }
-  )
-
-
-
-  .subscribe((status) => {
-    console.log("Supabase Connection Status:", status);
-  });
-// 9. HELPER FUNCTIONS
 function removeMarkerFromMap(id) {
-  console.log("Removing marker:", id);
-
-  window.incidentLayer.eachLayer((layer) => {
-    if (String(layer.incidentId) === String(id)) {
-      window.incidentLayer.removeLayer(layer);
-      console.log("Marker removed:", id);
-    }
-  });
-  updateActiveCounters();
+    if (!window.incidentLayer) return;
+    window.incidentLayer.eachLayer(layer => {
+        if (String(layer.incidentId) === String(id)) {
+            window.incidentLayer.removeLayer(layer);
+        }
+    });
+    updateActiveCounters();
 }
 
 function handleLocationUpdate(payload) {
     const record = payload.new;
     if (!record.latitude || !record.longitude) return;
-    
+
     const id = record.vehicle_id || record.device_id;
-    if (!isInsideAllowedMapBounds(record.latitude, record.longitude)) {
+    if (!isPointInPolygon(record.latitude, record.longitude)) {
         const markerData = trackingMarkers.get(id);
         if (markerData) {
             window.trackingLayer.removeLayer(markerData.marker);
@@ -634,8 +657,7 @@ function handleLocationUpdate(payload) {
         return;
     }
 
-    let markerData = trackingMarkers.get(id);
-
+    const markerData = trackingMarkers.get(id);
     if (markerData) {
         animateMarkerMovement(markerData.marker, markerData.lat, markerData.lng, record.latitude, record.longitude);
         markerData.lat = record.latitude;
@@ -647,11 +669,39 @@ function handleLocationUpdate(payload) {
     }
 }
 
+supabaseClient
+    .channel('map-updates')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incidents' }, (payload) => {
+        const lat = payload.new.latitude || payload.new.lat;
+        const lng = payload.new.longitude || payload.new.long;
+        if (!lat || !lng || !isPointInPolygon(lat, lng)) return;
+
+        const markerAdded = addIncidentMarker(payload.new);
+        if (!markerAdded) return;
+        updateActiveCounters();
+
+        try {
+            new Audio('https://www.soundjay.com/buttons/beep-01a.mp3').play().catch(() => {});
+        } catch (e) { /* ignore */ }
+
+        if (lat && lng) map.flyTo([lat, lng], 15);
+
+        try { showNewReportToast(payload.new); } catch (e) { /* ignore */ }
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'incidents' }, (payload) => {
+        const id = String(payload.new.id);
+        const status = (payload.new.status || '').toLowerCase().trim();
+        if (status === 'resolved') {
+            removeMarkerFromMap(id);
+        } else if (status === 'active') {
+            removeMarkerFromMap(id);
+            addIncidentMarker(payload.new);
+        }
+        updateActiveCounters();
+    })
+    .subscribe((status) => console.log('Supabase subscription:', status));
 
 setInterval(() => {
     loadReports();
     updateActiveCounters();
 }, 5000);
-
-
-
