@@ -132,6 +132,7 @@ function initializeMap() {
         { name: 'Ungka Police Station', lat: 10.747512542219782, lng: 122.54008363707585, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 9', lat: 10.7272054892569, lng: 122.56710895228002, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
+        { name: 'ICARE Fire station', lat: 10.705088291583916, lng: 122.55490712638891, icon: fireIcons, layer: window.fireLayer },
         { name: 'La Paz Fire Sub-Station', lat: 10.712651852092284, lng: 122.57295111469945, icon: fireIcons, layer: window.fireLayer },
         { name: 'Federation Iloilo Fire Station', lat: 10.698697241164309, lng: 122.57076622219913, icon: fireIcons, layer: window.fireLayer },
         { name: 'BFP Iloilo', lat: 10.690705849929284, lng: 122.58144791800282, icon: fireIcons, layer: window.fireLayer },
