@@ -199,8 +199,23 @@ function checkAuthentication() {
     }
 }
 
+function initShowPasswordToggles() {
+    document.querySelectorAll('.show-password-toggle').forEach(toggle => {
+        toggle.addEventListener('change', () => {
+            const targets = toggle.dataset.targets.split(',');
+            targets.forEach(target => {
+                const input = document.getElementById(target.trim());
+                if (input) {
+                    input.type = toggle.checked ? 'text' : 'password';
+                }
+            });
+        });
+    });
+}
+
 function initPage() {
     checkAuthentication();
+    initShowPasswordToggles();
 }
 
 if (document.readyState === 'loading') {
