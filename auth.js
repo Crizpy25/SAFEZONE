@@ -148,12 +148,16 @@ async function handleLogin(event) {
 
 async function logout() {
     const userID = getCurrentUserID();
-    if (userID) {
-        try {
-            await db.from('admins').update({ is_online: false }).eq('id', userID);
-        } catch (err) {
-            console.error('Error updating logout status:', err);
+
+    try {
+        if (userID) {
+            await db.from('admins').update({ is_online: false, last_login: new Date().toISOString() }).eq('id', userID);
         }
+        if (typeof window.cleanupAdminSession === 'function') {
+            await window.cleanupAdminSession();
+        }
+    } catch (err) {
+        console.error('Error during logout cleanup:', err);
     }
 
     sessionStorage.removeItem('adminLoggedIn');

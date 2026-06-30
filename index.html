@@ -132,22 +132,51 @@
 
         <div class="relative w-full h-[80vh] rounded-lg overflow-hidden">
             <div id="map" class="w-full h-full"></div>
-            <div class="absolute top-3 right-3 flex flex-col gap-2 z-[1000]">
-                <button onclick="toggleAll()" id="btnAll" class="bg-white/90 hover:bg-white text-gray-800 text-[10px] font-semibold px-2 py-1 rounded shadow border border-gray-300">Hide All</button>
-                <button onclick="togglePolice()" id="btnPolice" class="flex items-center gap-1 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-1.5 py-1">
-                    <img src="images/police.png" alt="" class="w-6 h-6 object-contain" onerror="this.style.visibility='hidden'">
-                    <span class="text-[10px] font-semibold text-gray-800 leading-none">Police</span>
+            <div class="absolute top-3 right-3 flex flex-col gap-3 z-[1000]">
+                <button onclick="centerMap()" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-semibold px-3 py-2 rounded shadow border border-gray-300">Re-center Map</button>
+                <button onclick="toggleAll()" id="btnAll" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-semibold px-3 py-2 rounded shadow border border-gray-300">Hide All</button>
+                <button onclick="togglePolice()" id="btnPolice" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                    <img src="images/police.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                    <span class="text-sm font-semibold text-gray-800 leading-none">Police</span>
                 </button>
-                <button onclick="toggleFire()" id="btnFire" class="flex items-center gap-1 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-1.5 py-1">
-                    <img src="images/fire.png" alt="" class="w-6 h-6 object-contain" onerror="this.style.visibility='hidden'">
-                    <span class="text-[10px] font-semibold text-gray-800 leading-none">Fire</span>
+                <button onclick="toggleFire()" id="btnFire" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                    <img src="images/fire.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                    <span class="text-sm font-semibold text-gray-800 leading-none">Fire</span>
                 </button>
-                <button onclick="toggleHospital()" id="btnHospital" class="flex items-center gap-1 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-1.5 py-1">
-                    <img src="images/hospital.png" alt="" class="w-6 h-6 object-contain" onerror="this.style.visibility='hidden'">
-                    <span class="text-[10px] font-semibold text-gray-800 leading-none">Hospital</span>
+                <button onclick="toggleHospital()" id="btnHospital" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                    <img src="images/hospital.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                    <span class="text-sm font-semibold text-gray-800 leading-none">Hospital</span>
                 </button>
             </div>
     </main>
+
+    <div id="imageLightbox" class="hidden fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4" onclick="closeLightbox()">
+        <div class="relative max-w-4xl max-h-[90vh]" onclick="event.stopPropagation()">
+            <button onclick="closeLightbox()" class="absolute top-2 right-2 bg-white/20 hover:bg-white/40 text-white text-2xl w-10 h-10 rounded-full leading-none">&times;</button>
+            <img id="lightboxImage" src="" alt="Enlarged" class="max-w-full max-h-[90vh] rounded-lg shadow-2xl">
+        </div>
+    </div>
+
+    <script>
+        window.openLightbox = function(url) {
+            const lb = document.getElementById('imageLightbox');
+            const img = document.getElementById('lightboxImage');
+            if (lb && img) {
+                img.src = url;
+                lb.classList.remove('hidden');
+            }
+        };
+        window.closeLightbox = function() {
+            const lb = document.getElementById('imageLightbox');
+            if (lb) {
+                lb.classList.add('hidden');
+                document.getElementById('lightboxImage').src = '';
+            }
+        };
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
 
     <audio id="remoteAudio" autoplay playsinline></audio>
 
