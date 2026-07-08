@@ -318,8 +318,11 @@
             }
 
             if (view === 'reports') {
-                if (typeof window.loadReports === 'function') {
-                    window.loadReports({ showLoading: true });
+                console.log('[Reports] switchView opened reports section');
+                if (typeof window.loadReportRecords === 'function') {
+                    window.loadReportRecords({ showLoading: true });
+                } else {
+                    console.error('[Reports] window.loadReportRecords is not a function');
                 }
             } else if (view === 'calls') {
                 renderCallRecords();
@@ -578,13 +581,16 @@
             `;
         }
 
-        async function loadReports({ showLoading = false } = {}) {
+        async function loadReportRecords({ showLoading = false } = {}) {
+            console.log('[Reports] loadReportRecords started', { showLoading, hasSupabase: !!window.supabaseClient });
+
             if (showLoading) {
                 document.getElementById('output').innerHTML = '<div class="p-8 text-center text-slate-400">Loading...</div>';
                 document.getElementById('recordCount').textContent = 'Loading reports...';
             }
 
             if (!window.supabaseClient) {
+                console.error('[Reports] Supabase client is not loaded on window.supabaseClient');
                 document.getElementById('output').innerHTML = '<div class="p-8 text-center text-red-500">Error: Supabase client is not loaded.</div>';
                 return;
             }
@@ -592,10 +598,12 @@
             const { data, error } = await window.supabaseClient
                 .from('incidents')
                 .select('*')
-                .not('status', 'in', '("resolved","cancelled")')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false, nullsFirst: true });
+
+            console.log('[Reports] Supabase query result', { dataLength: Array.isArray(data) ? data.length : 'non-array', error });
 
             if (error) {
+                console.error('[Reports] Supabase query error:', error);
                 document.getElementById('output').innerHTML = '<div class="p-8 text-center text-red-500">Error: ' + escapeHtml(error.message) + '</div>';
                 return;
             }
@@ -609,7 +617,7 @@
 
             refreshTimer = setInterval(() => {
                 if (document.visibilityState === 'visible') {
-                    loadReports();
+                    loadReportRecords();
                 }
             }, refreshIntervalMs);
         }
@@ -647,18 +655,20 @@
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                loadReports();
+                console.log('[Reports] visibilitychange -> visible, reloading reports');
+                loadReportRecords();
             }
         });
 
         window.supabaseClient
             .channel('report-records-updates')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, () => {
-                loadReports();
+                console.log('[Reports] Realtime incident change detected, reloading reports');
+                loadReportRecords();
             })
             .subscribe((status) => console.log('Report records subscription:', status));
 
-        window.loadReports = loadReports;
+        window.loadReportRecords = loadReportRecords;
     </script>
 
     <script>

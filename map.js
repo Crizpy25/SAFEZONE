@@ -651,7 +651,7 @@ function removeMarkerFromMap(id) {
     updateActiveCounters();
 }
 
-supabaseClient
+window.supabaseClient
     .channel('map-updates')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'incidents' }, (payload) => {
         const lat = payload.new.latitude || payload.new.lat;

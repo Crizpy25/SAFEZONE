@@ -136,14 +136,15 @@
                         </select>
                     </div>
 
-                    <label class="relative block w-full lg:max-w-sm" for="searchInput">
-                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                <path d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
-                        </span>
-                        <input id="searchInput" type="search" placeholder="Search reports..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                    </label>
+                        <label class="relative block w-full lg:max-w-sm" for="searchInput">
+                            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </span>
+                            <input id="searchInput" type="search" placeholder="Search reports..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                        </label>
+                        <button onclick="loadReports({ showLoading: true })" class="h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">Refresh</button>
                 </div>
 
                 <div id="output" class="text-slate-700">
@@ -428,7 +429,10 @@
                     document.getElementById('recordCount').textContent = 'Loading reports...';
                 }
 
+                console.log('[Reports] loadReports started', { showLoading, hasSupabase: !!window.supabaseClient });
+
                 if (!window.supabaseClient) {
+                    console.error('[Reports] Supabase client is not loaded on window.supabaseClient');
                     document.getElementById('output').innerHTML = '<div class="p-8 text-center text-red-500">Error: Supabase client is not loaded.</div>';
                     return;
                 }
@@ -436,17 +440,31 @@
                 const { data, error } = await window.supabaseClient
                     .from('incidents')
                     .select('*')
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false, nullsFirst: true });
 
                 if (error) {
+                    console.error('[Reports] Supabase query error:', error);
                     document.getElementById('output').innerHTML = '<div class="p-8 text-center text-red-500">Error: ' + escapeHtml(error.message) + '</div>';
                     return;
                 }
 
-                allReports = data || [];
+                console.log('[Reports] Query succeeded', { rowCount: Array.isArray(data) ? data.length : 'non-array' });
+
+                const rows = Array.isArray(data) ? data : [];
+                if (!rows.length) {
+                    console.warn('[Reports] Query returned 0 rows');
+                    allReports = [];
+                    renderReports();
+                    return;
+                }
+
+                const sample = rows.slice(0, 1)[0] || {};
+                console.log('[Reports] Sample row keys:', Object.keys(sample));
+
+                allReports = rows;
                 renderReports();
             } catch (err) {
-                console.error('Failed to load reports:', err);
+                console.error('[Reports] loadReports failed:', err);
                 document.getElementById('output').innerHTML = '<div class="p-8 text-center text-red-500">Error: ' + escapeHtml(err.message || 'Unknown error') + '</div>';
             }
         }

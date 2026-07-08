@@ -7,6 +7,28 @@
    Fully compatible with the Flutter caller application.
    ========================================================= */
 
+const CALL_STATES = Object.freeze({
+    IDLE: 'Idle',
+    RINGING: 'Ringing',
+    CONNECTING: 'Connecting',
+    CONNECTED: 'Connected',
+    ENDED: 'Ended'
+});
+
+let callState = CALL_STATES.IDLE;
+
+function logCallState(newState, reason) {
+    const prev = callState;
+    if (prev === newState) return;
+    const timestamp = new Date().toISOString();
+    console.log(`[CallState] ${prev} → ${newState}${reason ? ` (${reason})` : ''} @ ${timestamp}`);
+    callState = newState;
+}
+
+function transitionTo(newState, reason) {
+    logCallState(newState, reason);
+}
+
 const CALL_STATUS = Object.freeze({ available: 'available', busy: 'busy', offline: 'offline' });
 
 let peer = null;
@@ -104,7 +126,11 @@ let pendingIncomingUi = false;
 
 function ensureIncomingCallUI() {
     if (!isDashboard) return;
-    if (pendingIncomingUi || incomingCall) {
+    if (isOnCall()) {
+        hide(idleState);
+        hide(incomingState);
+        show(activeState);
+    } else if (pendingIncomingUi || incomingCall) {
         hide(idleState);
         show(incomingState);
         hide(activeState);
@@ -246,8 +272,9 @@ async function initPeer() {
         }
         if (!isOnCall()) {
             await setCallStatus(CALL_STATUS.available);
+            transitionTo(CALL_STATES.IDLE, 'peer opened and not on call');
+            setStatus('Call not Active');
         }
-        setStatus('Call not Active');
     });
 
     peer.on('call', async (call) => {
@@ -257,7 +284,7 @@ async function initPeer() {
             return;
         }
 
-        // Ensure status is marked busy as soon as a call comes in
+        transitionTo(CALL_STATES.RINGING, 'incoming peer call');
         await setCallStatus(CALL_STATUS.busy);
 
         incomingCall = call;
@@ -273,6 +300,7 @@ async function initPeer() {
                     });
                 }
                 incomingCall = null;
+                transitionTo(CALL_STATES.IDLE, 'incoming call closed before answer');
                 await setCallStatus(CALL_STATUS.available);
                 resetUI();
             }
@@ -290,7 +318,6 @@ async function initPeer() {
                 try {
                     if (peer && !peer.destroyed) {
                         await peer.reconnect();
-                        // Sync any PeerJS ID change back to Supabase
                         if (peer.id && adminId && peer.id !== peerId) {
                             peerId = peer.id;
                             await window.supabaseClient
@@ -300,6 +327,7 @@ async function initPeer() {
                         }
                         if (!isOnCall()) {
                             await setCallStatus(CALL_STATUS.available);
+                            transitionTo(CALL_STATES.IDLE, 'reconnected and not on call');
                         }
                     }
                 } catch (e) { /* ignore */ }
@@ -310,7 +338,6 @@ async function initPeer() {
     peer.on('error', async (err) => {
         console.error('PeerJS error:', err);
         if (err.type === 'unavailable-id') {
-            // ID collision — generate a fresh ID and reinitialize
             const freshPeerId = generatePeerId();
             peerId = freshPeerId;
             persistPeerId(freshPeerId);
@@ -324,7 +351,12 @@ async function initPeer() {
             setTimeout(() => initPeer(), 1000);
             return;
         }
+        if (isOnCall()) {
+            console.warn('[CallState] Peer error during active call, preserving UI:', err.type);
+            return;
+        }
         incomingCall = null;
+        transitionTo(CALL_STATES.IDLE, 'peer error while idle');
         await setCallStatus(CALL_STATUS.available);
         resetUI();
     });
@@ -336,6 +368,7 @@ async function initPeer() {
 function acceptCall() {
     if (!incomingCall || !isDashboard) return;
 
+    transitionTo(CALL_STATES.CONNECTING, 'accepting incoming call');
     navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
             localStream = stream;
@@ -351,6 +384,7 @@ function acceptCall() {
 
             currentCall.answer(stream);
             currentCall.on('stream', (remoteStream) => {
+                transitionTo(CALL_STATES.CONNECTED, 'remote stream received');
                 pendingIncomingUi = false;
                 remoteAudio.srcObject = remoteStream;
                 hide(incomingState);
@@ -367,6 +401,7 @@ function acceptCall() {
                 }, 1000);
             });
             currentCall.on('close', async () => {
+                transitionTo(CALL_STATES.ENDED, 'call closed');
                 if (activeCallRecordId) {
                     updateCallRecord(activeCallRecordId, {
                         status: 'ended',
@@ -378,12 +413,14 @@ function acceptCall() {
                 resetUI();
             });
             currentCall.on('error', async () => {
+                transitionTo(CALL_STATES.ENDED, 'call error');
                 await setCallStatus(CALL_STATUS.available);
                 resetUI();
             });
         })
         .catch(async () => {
             incomingCall = null;
+            transitionTo(CALL_STATES.IDLE, 'failed to get user media');
             await setCallStatus(CALL_STATUS.available);
             rejectCall();
         });
@@ -400,6 +437,7 @@ function rejectCall() {
         incomingCall.close();
         incomingCall = null;
     }
+    transitionTo(CALL_STATES.IDLE, 'call rejected');
     resetUI();
 }
 
@@ -408,7 +446,7 @@ function endCall() {
         currentCall.close();
         currentCall = null;
     }
-    resetUI();
+    // resetUI() is invoked by currentCall.on('close')
 }
 
 /**
@@ -438,6 +476,8 @@ async function resetUI() {
     setStatus('Waiting for call...');
     incomingCall = null;
     currentCall = null;
+
+    transitionTo(CALL_STATES.IDLE, 'UI reset');
 
     if (!isDestroyed && adminId) {
         const stillLoggedIn = sessionStorage.getItem('adminLoggedIn') === 'true';
@@ -475,6 +515,7 @@ window.addEventListener('pagehide', async () => {
 });
 
 window.addEventListener('focus', () => {
+    console.log('[CallState] Window focused, current state:', callState, 'isOnCall:', isOnCall());
     ensureIncomingCallUI();
 });
 
