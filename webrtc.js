@@ -18,6 +18,79 @@ let seconds = 0;
 let isDestroyed = false;
 let adminId = null;
 let peerId = null;
+let activeCallRecordId = null;
+
+const CALL_RECORDS_STORAGE_KEY = 'safezone_call_records';
+
+function readCallRecords() {
+    try {
+        return JSON.parse(localStorage.getItem(CALL_RECORDS_STORAGE_KEY) || '[]');
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveCallRecords(records) {
+    try {
+        localStorage.setItem(CALL_RECORDS_STORAGE_KEY, JSON.stringify(records));
+    } catch (e) {
+        console.error('Failed to save call records:', e);
+    }
+}
+
+function emitCallRecordsUpdated() {
+    try {
+        window.dispatchEvent(new Event('call-records-updated'));
+    } catch (e) {
+        /* ignore */
+    }
+}
+
+function createIncomingCallRecord(call) {
+    const record = {
+        id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        peerId: call?.peer || 'Unknown caller',
+        status: 'received',
+        receivedAt: new Date().toISOString(),
+        durationSeconds: 0
+    };
+
+    const records = readCallRecords();
+    records.unshift(record);
+    saveCallRecords(records.slice(0, 200));
+    emitCallRecordsUpdated();
+    return record.id;
+}
+
+function updateCallRecord(recordId, updates) {
+    if (!recordId) return;
+    const records = readCallRecords();
+    const index = records.findIndex(entry => entry.id === recordId);
+    if (index < 0) return;
+    records[index] = { ...records[index], ...updates };
+    saveCallRecords(records);
+    emitCallRecordsUpdated();
+}
+
+function prepareAppNavigation() {
+    sessionStorage.setItem('skipPeerCleanup', 'true');
+    window.clearTimeout(window.__peerCleanupResetTimer);
+    window.__peerCleanupResetTimer = window.setTimeout(() => {
+        sessionStorage.removeItem('skipPeerCleanup');
+    }, 2000);
+}
+
+function clearPendingAppNavigation() {
+    window.clearTimeout(window.__peerCleanupResetTimer);
+    sessionStorage.removeItem('skipPeerCleanup');
+}
+
+function shouldSkipCleanup() {
+    return sessionStorage.getItem('skipPeerCleanup') === 'true';
+}
+
+window.prepareAppNavigation = prepareAppNavigation;
+window.clearPendingAppNavigation = clearPendingAppNavigation;
 
 // DOM references (index.html)
 const idleState = document.getElementById('idleState');
@@ -27,12 +100,34 @@ const callTimer = document.getElementById('callTimer');
 const remoteAudio = document.getElementById('remoteAudio');
 
 const isDashboard = Boolean(idleState && incomingState && activeState);
+let pendingIncomingUi = false;
+
+function ensureIncomingCallUI() {
+    if (!isDashboard) return;
+    if (pendingIncomingUi || incomingCall) {
+        hide(idleState);
+        show(incomingState);
+        hide(activeState);
+    } else {
+        hide(incomingState);
+        hide(activeState);
+        show(idleState);
+    }
+}
 
 function show(el) { if (el) el.classList.remove('hidden'); }
 function hide(el) { if (el) el.classList.add('hidden'); }
 function setStatus(text) {
     const el = document.getElementById('status');
     if (el) el.textContent = text;
+}
+function persistPeerId(id) {
+    if (id) {
+        sessionStorage.setItem('adminPeerId', id);
+    }
+}
+function getStoredPeerId() {
+    return sessionStorage.getItem('adminPeerId');
 }
 
 /**
@@ -51,7 +146,8 @@ async function registerAdminSession() {
     const storedAdminId = sessionStorage.getItem('adminUserID');
     if (!storedAdminId || !window.supabaseClient) return null;
 
-    const newPeerId = generatePeerId();
+    const storedPeerId = getStoredPeerId();
+    const newPeerId = storedPeerId || generatePeerId();
     const now = new Date().toISOString();
 
     try {
@@ -73,7 +169,8 @@ async function registerAdminSession() {
         }
 
         adminId = data.id;
-        peerId = data.peer_id;
+        peerId = data.peer_id || newPeerId;
+        persistPeerId(peerId);
         return data;
     } catch (err) {
         console.error('Exception registering admin session:', err);
@@ -143,6 +240,10 @@ async function initPeer() {
     peer = new Peer(peerId);
 
     peer.on('open', async () => {
+        if (peer.id) {
+            peerId = peer.id;
+            persistPeerId(peer.id);
+        }
         if (!isOnCall()) {
             await setCallStatus(CALL_STATUS.available);
         }
@@ -160,20 +261,25 @@ async function initPeer() {
         await setCallStatus(CALL_STATUS.busy);
 
         incomingCall = call;
+        activeCallRecordId = createIncomingCallRecord(call);
 
         // Caller hung up before we answered
         incomingCall.on('close', async () => {
             if (incomingCall === call) {
+                if (activeCallRecordId && !currentCall) {
+                    updateCallRecord(activeCallRecordId, {
+                        status: 'missed',
+                        durationSeconds: 0
+                    });
+                }
                 incomingCall = null;
                 await setCallStatus(CALL_STATUS.available);
                 resetUI();
             }
         });
 
-        if (isDashboard) {
-            hide(idleState);
-            show(incomingState);
-        }
+        pendingIncomingUi = true;
+        ensureIncomingCallUI();
         setStatus('Incoming call...');
     });
 
@@ -207,6 +313,7 @@ async function initPeer() {
             // ID collision — generate a fresh ID and reinitialize
             const freshPeerId = generatePeerId();
             peerId = freshPeerId;
+            persistPeerId(freshPeerId);
             try {
                 await window.supabaseClient
                     .from('admins')
@@ -235,8 +342,16 @@ function acceptCall() {
             currentCall = incomingCall;
             incomingCall = null;
 
+            if (activeCallRecordId) {
+                updateCallRecord(activeCallRecordId, {
+                    status: 'accepted',
+                    acceptedAt: new Date().toISOString()
+                });
+            }
+
             currentCall.answer(stream);
             currentCall.on('stream', (remoteStream) => {
+                pendingIncomingUi = false;
                 remoteAudio.srcObject = remoteStream;
                 hide(incomingState);
                 show(activeState);
@@ -252,6 +367,13 @@ function acceptCall() {
                 }, 1000);
             });
             currentCall.on('close', async () => {
+                if (activeCallRecordId) {
+                    updateCallRecord(activeCallRecordId, {
+                        status: 'ended',
+                        durationSeconds: seconds,
+                        endedAt: new Date().toISOString()
+                    });
+                }
                 await setCallStatus(CALL_STATUS.available);
                 resetUI();
             });
@@ -269,6 +391,12 @@ function acceptCall() {
 
 function rejectCall() {
     if (incomingCall) {
+        if (activeCallRecordId) {
+            updateCallRecord(activeCallRecordId, {
+                status: 'rejected',
+                durationSeconds: 0
+            });
+        }
         incomingCall.close();
         incomingCall = null;
     }
@@ -302,9 +430,11 @@ async function resetUI() {
     }
     if (callTimer) callTimer.textContent = '00:00';
 
+    pendingIncomingUi = false;
     hide(incomingState);
     hide(activeState);
     show(idleState);
+    activeCallRecordId = null;
     setStatus('Waiting for call...');
     incomingCall = null;
     currentCall = null;
@@ -333,13 +463,19 @@ function destroyPeer() {
 
 // Page lifecycle — mark agent offline on refresh or close
 window.addEventListener('beforeunload', async () => {
+    if (shouldSkipCleanup()) return;
     await clearAdminSession();
     destroyPeer();
 });
 
 window.addEventListener('pagehide', async () => {
+    if (shouldSkipCleanup()) return;
     await clearAdminSession();
     destroyPeer();
+});
+
+window.addEventListener('focus', () => {
+    ensureIncomingCallUI();
 });
 
 // Expose cleanup hook for auth.js logout or external triggers

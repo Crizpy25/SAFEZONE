@@ -192,11 +192,6 @@ function checkAuthentication() {
     }
 
     updateUserDisplay();
-
-    const mapEl = document.getElementById('map');
-    if (mapEl && typeof window.initializeMap === 'function') {
-        setTimeout(window.initializeMap, 100);
-    }
 }
 
 function initShowPasswordToggles() {
@@ -214,6 +209,9 @@ function initShowPasswordToggles() {
 }
 
 function initPage() {
+    if (typeof window.clearPendingAppNavigation === 'function') {
+        window.clearPendingAppNavigation();
+    }
     checkAuthentication();
     initShowPasswordToggles();
 }

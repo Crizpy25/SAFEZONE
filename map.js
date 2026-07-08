@@ -31,6 +31,11 @@ function isPointInPolygon(lat, lng) {
 }
 
 function initializeMap() {
+    if (map) {
+        console.warn('Map already initialized');
+        return;
+    }
+
     const mapEl = document.getElementById('map');
     if (!mapEl) {
         console.error('Map container #map not found');
@@ -41,11 +46,29 @@ function initializeMap() {
         return;
     }
 
-    map = L.map('map', {
-        minZoom: 13.2,
-        maxZoom: 18,
-        maxBoundsViscosity: 0.3
-    }).setView([10.7202, 122.5525], 13);
+    console.log('Initializing map...');
+    const rect = mapEl.getBoundingClientRect();
+    console.log('Map container dimensions:', rect.width, 'x', rect.height);
+    try {
+        map = L.map('map', {
+            minZoom: 13.2,
+            maxZoom: 18,
+            maxBoundsViscosity: 0.3
+        }).setView([10.7202, 122.5525], 13);
+        console.log('Leaflet map created successfully');
+    } catch (e) {
+        console.error('Failed to create Leaflet map:', e);
+        return;
+    }
+
+    try {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        console.log('Tile layer added');
+    } catch (e) {
+        console.error('Failed to add tile layer:', e);
+    }
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -77,10 +100,10 @@ function initializeMap() {
     const markerIcon = (url) => L.icon({
         iconUrl: url,
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
+        iconSize: [30, 55],
+        iconAnchor: [20, 66],
         popupAnchor: [1, -34],
-        shadowSize: [41, 41]
+
     });
     window.redIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png');
     window.blueIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png');
@@ -110,6 +133,7 @@ function initializeMap() {
         { name: 'Ungka Fire Sub-Station', lat: 10.74690941039231, lng: 122.53931659330536, icon: fireIcons, layer: window.fireLayer },
         { name: 'Old Molo Fire Station', lat: 10.697030999439814, lng: 122.5488881609591, icon: fireIcons, layer: window.fireLayer },
         { name: 'San Isidro Fire Sub-Station', lat: 10.736444550002995, lng: 122.5458557423291, icon: fireIcons, layer: window.fireLayer },
+        { name: 'BFP JARO FIRE SUB STATION', lat: 10.725305477601013, lng: 122.55751243802833, icon: fireIcons, layer: window.fireLayer },
         { name: 'Western Visayas Medical Center (Public)', lat: 10.718885489071287, lng: 122.54193891896666, icon: hospitalIcon, layer: window.hospitalLayer },
         { name: 'Iloilo Mission Hospital', lat: 10.714817707214994, lng: 122.56058274040979, icon: hospitalIcon, layer: window.hospitalLayer },
         { name: "St. Paul's Hospital Iloilo", lat: 10.702011896133618, lng: 122.56694877109325, icon: hospitalIcon, layer: window.hospitalLayer },
@@ -142,6 +166,10 @@ function initializeMap() {
     setTimeout(() => {
         try { map.invalidateSize(); } catch (e) { /* ignore */ }
     }, 100);
+
+    setTimeout(() => {
+        try { map.invalidateSize(); } catch (e) { /* ignore */ }
+    }, 500);
 
     setTimeout(refreshToggleState, 50);
 }
@@ -240,16 +268,38 @@ function closeCategoryReports() {
 }
 
 function showNewReportToast(report) {
-    const toast = document.getElementById('newReportToast');
-    const text = document.getElementById('newReportToastText');
-    if (!toast || !text) return;
+    const slots = Array.from(document.querySelectorAll('.new-report-toast-slot'));
+    if (!slots.length) return;
+
     const category = report.category ? report.category.toUpperCase() : 'EMERGENCY';
     const desc = report.description ? `: ${report.description}` : '';
-    const time = report.created_at ? new Date(report.created_at).toLocaleTimeString() : '';
-    text.innerHTML = `<strong>${category}</strong>${desc}<br><span style="opacity:.85">${time}</span>`;
-    toast.classList.remove('hidden');
-    clearTimeout(toast._timeout);
-    toast._timeout = setTimeout(() => toast.classList.add('hidden'), 6000);
+    const rawTime = report.created_at ? new Date(report.created_at) : new Date();
+    const time = rawTime && !Number.isNaN(rawTime.getTime())
+        ? new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawTime)
+        : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    const html = `<strong>${category}</strong>${desc}<br><span style="opacity:.85">${time}</span>`;
+
+    let targetSlot = slots.find(slot => slot.classList.contains('hidden'));
+    if (!targetSlot) {
+        targetSlot = slots[0];
+        targetSlot.classList.add('hidden');
+        targetSlot.dataset.active = 'false';
+    }
+
+    const text = targetSlot.querySelector('.toast-text');
+    if (!text) return;
+
+    text.innerHTML = html;
+    targetSlot.classList.remove('hidden');
+    targetSlot.dataset.active = 'true';
+
+    clearTimeout(targetSlot._timeout);
+    targetSlot._timeout = setTimeout(() => {
+        if (targetSlot.dataset.active === 'true') {
+            targetSlot.classList.add('hidden');
+            targetSlot.dataset.active = 'false';
+        }
+    }, 3000);
 }
 
 function showCategoryReports(category) {
@@ -411,7 +461,7 @@ async function loadReports() {
         const { data, error } = await window.supabaseClient
             .from('incidents')
             .select('*')
-            .not('status', 'eq', 'resolved');
+            .not('status', 'in', '("resolved","cancelled")');
 
         if (error) {
             console.error('Error loading reports:', error);
@@ -431,7 +481,7 @@ function addIncidentMarker(report) {
     if (!map) return false;
 
     const id = report.id;
-    if (!id || report.status === 'resolved') return false;
+    if (!id || report.status === 'resolved' || report.status === 'cancelled') return false;
 
     const lat = report.latitude || report.lat;
     const lng = report.longitude || report.long || report.longtitude;
@@ -462,6 +512,11 @@ function addIncidentMarker(report) {
             <div style="font-size:13px; color:#334155; line-height:1.5;">
                 ${escapeMapHtml(report.description || 'No description provided')}
             </div>
+            ${report.phone_number ? `
+                <div style="font-size:13px; color:#334155; line-height:1.5; margin-top:4px;">
+                    <strong>Phone:</strong> ${escapeMapHtml(report.phone_number)}
+                </div>
+            ` : ''}
             ${report.image_url ? `
                 <img src="${report.image_url}"
                      style="width:100%; max-height:120px; object-fit:cover; border-radius:6px; margin-top:8px; cursor:pointer;"
@@ -471,10 +526,16 @@ function addIncidentMarker(report) {
             <div id="nearest-responder-${id}" style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px; font-size:12px; color:#64748b;">
                 ${nearestHtml}
             </div>
-            <button onclick="markAsResolved('${id}')"
-                style="margin-top:10px;width:100%;background:#28a745;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
-                Mark as Done
-            </button>
+            <div style="margin-top:10px; display:flex; gap:8px;">
+                <button onclick="markAsResolved('${id}')"
+                    style="flex:1;background:#28a745;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
+                    DONE
+                </button>
+                <button onclick="markAsCancelled('${id}')"
+                    style="flex:1;background:#dc3545;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
+                    CANCEL
+                </button>
+            </div>
         </div>
     `;
 
@@ -551,21 +612,33 @@ function addIncidentMarker(report) {
 }
 
 async function markAsResolved(incidentId) {
+    const id = typeof incidentId === 'number' ? incidentId : /^\d+$/.test(String(incidentId)) ? Number(incidentId) : incidentId;
     const { data, error } = await window.supabaseClient
         .from('incidents')
         .update({ status: 'resolved' })
-        .eq('id', incidentId)
+        .eq('id', id)
         .select();
 
     if (error) {
         console.error("Database Error:", error.message);
-        alert("Failed to update database: " + error.message);
-    } else if (data.length === 0) {
-        console.warn("No rows updated. Does the ID exist?");
-        alert("Warning: No record was updated. Check the ID.");
-    } else {
-        console.log("Database updated successfully:", data);
+        return;
     }
+    removeMarkerFromMap(id);
+}
+
+async function markAsCancelled(incidentId) {
+    const id = typeof incidentId === 'number' ? incidentId : /^\d+$/.test(String(incidentId)) ? Number(incidentId) : incidentId;
+    const { data, error } = await window.supabaseClient
+        .from('incidents')
+        .update({ status: 'cancelled' })
+        .eq('id', id)
+        .select();
+
+    if (error) {
+        console.error("Database Error:", error.message);
+        return;
+    }
+    removeMarkerFromMap(id);
 }
 
 function removeMarkerFromMap(id) {
@@ -600,12 +673,17 @@ supabaseClient
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'incidents' }, (payload) => {
         const id = String(payload.new.id);
         const status = (payload.new.status || '').toLowerCase().trim();
-        if (status === 'resolved') {
+        if (status === 'resolved' || status === 'cancelled') {
             removeMarkerFromMap(id);
         } else if (status === 'active') {
             removeMarkerFromMap(id);
             addIncidentMarker(payload.new);
         }
+        updateActiveCounters();
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'incidents' }, (payload) => {
+        const id = String(payload.old.id);
+        removeMarkerFromMap(id);
         updateActiveCounters();
     })
     .subscribe((status) => console.log('Supabase subscription:', status));
@@ -617,3 +695,22 @@ setInterval(() => {
 
 window.initializeMap = initializeMap;
 window.centerMap = centerMap;
+
+function tryInitializeMap() {
+    const mapEl = document.getElementById('map');
+    if (!mapEl) {
+        console.error('Map container #map not found during init');
+        return;
+    }
+    if (!window.L) {
+        console.error('Leaflet is not loaded during init');
+        return;
+    }
+    initializeMap();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(tryInitializeMap, 0));
+} else {
+    setTimeout(tryInitializeMap, 0);
+}
