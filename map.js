@@ -11,6 +11,9 @@ const ILOILO_CITY_POLYGON = [
 ];
 
 let map = null;
+let selectedNotificationId = null;
+let notificationFilter = 'All';
+if (!window.allIncidents) window.allIncidents = [];
 
 function isPointInPolygon(lat, lng) {
     const ptLat = Number(lat);
@@ -32,7 +35,6 @@ function isPointInPolygon(lat, lng) {
 
 function initializeMap() {
     if (map) {
-        console.warn('Map already initialized');
         return;
     }
 
@@ -46,16 +48,12 @@ function initializeMap() {
         return;
     }
 
-    console.log('Initializing map...');
-    const rect = mapEl.getBoundingClientRect();
-    console.log('Map container dimensions:', rect.width, 'x', rect.height);
     try {
         map = L.map('map', {
             minZoom: 13.2,
             maxZoom: 18,
             maxBoundsViscosity: 0.3
         }).setView([10.7202, 122.5525], 13);
-        console.log('Leaflet map created successfully');
     } catch (e) {
         console.error('Failed to create Leaflet map:', e);
         return;
@@ -65,7 +63,6 @@ function initializeMap() {
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
         }).addTo(map);
-        console.log('Tile layer added');
     } catch (e) {
         console.error('Failed to add tile layer:', e);
     }
@@ -122,14 +119,14 @@ function initializeMap() {
         { name: 'ICPO Police Station 9', lat: 10.7272054892569, lng: 122.56710895228002, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICARE Fire station', lat: 10.705088291583916, lng: 122.55490712638891, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Alta Tierra Fire Sub-station', lat: 10.739664436279549, lng: 122.56651531888511, icon: fireIcons, layer: window.fireLayer },
         { name: 'La Paz Fire Sub-Station', lat: 10.712651852092284, lng: 122.57295111469945, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Federation Iloilo Fire Station', lat: 10.698697241164309, lng: 122.57076622219913, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Federation Iloilo Fire Station', lat: 10.697089988322267, lng: 122.56487023547012, icon: fireIcons, layer: window.fireLayer },
         { name: 'BFP Iloilo', lat: 10.690705849929284, lng: 122.58144791800282, icon: fireIcons, layer: window.fireLayer },
         { name: 'Bo. Obrero Fire Sub-Station', lat: 10.702275407727985, lng: 122.59067301967075, icon: fireIcons, layer: window.fireLayer },
         { name: 'Mandurriao Fire Sub-Station', lat: 10.719211489646474, lng: 122.53920666146492, icon: fireIcons, layer: window.fireLayer },
         { name: 'Arevalo Fire Sub-Station', lat: 10.688797426748417, lng: 122.51626529021178, icon: fireIcons, layer: window.fireLayer },
         { name: 'Sto. Niño Sur Fire Sub-Station', lat: 10.68223713089546, lng: 122.5099533777009, icon: fireIcons, layer: window.fireLayer },
-        { name: 'BFP Jaro', lat: 10.72744065268221, lng: 122.56251218153137, icon: fireIcons, layer: window.fireLayer },
         { name: 'Ungka Fire Sub-Station', lat: 10.74690941039231, lng: 122.53931659330536, icon: fireIcons, layer: window.fireLayer },
         { name: 'Old Molo Fire Station', lat: 10.697030999439814, lng: 122.5488881609591, icon: fireIcons, layer: window.fireLayer },
         { name: 'San Isidro Fire Sub-Station', lat: 10.736444550002995, lng: 122.5458557423291, icon: fireIcons, layer: window.fireLayer },
@@ -442,14 +439,363 @@ function updateReportsList() {
     `).join('');
 }
 
-function panToIncident(id) {
-    if (!window.incidentLayer) return;
-    window.incidentLayer.eachLayer(layer => {
-        if (String(layer.incidentId) === String(id)) {
-            map.flyTo(layer.getLatLng(), 15, { animate: true });
-            layer.openPopup();
-        }
+function normalizeNotificationStatus(status) {
+    const value = String(status || '').toLowerCase().trim();
+    if (value.includes('respond')) return 'Responding';
+    if (value.includes('resolve')) return 'Resolved';
+    if (value.includes('cancel')) return 'Cancelled';
+    return 'Active';
+}
+
+function formatDetailValue(value) {
+    if (typeof value === 'object') {
+        return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+}
+
+function getTypeBadge(type) {
+    const styles = {
+        Fire: 'bg-red-50 text-red-700 ring-red-600/20',
+        Medic: 'bg-blue-50 text-blue-700 ring-blue-600/20',
+        Police: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
+        Unknown: 'bg-slate-100 text-slate-600 ring-slate-500/20'
+    };
+    return `<span class="inline-flex min-w-[92px] justify-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${styles[type] || styles.Unknown}">${escapeMapHtml(type)}</span>`;
+}
+
+function openMapReportDetails(report) {
+    const id = report?.id;
+    const status = normalizeNotificationStatus(report.status);
+    const type = getNotificationCategory(report.category);
+    const deviceId = getReporterDeviceId(report);
+    const imageUrl = getNotificationImageUrl(report);
+    const description = String(report.description || 'No description provided');
+    const location = getNotificationLocation(report);
+    const timestamp = formatNotificationTimestamp(report);
+    const lat = Number(report.latitude || report.lat);
+    const lng = Number(report.longitude || report.long || report.longtitude);
+    const isTerminal = status === 'Resolved' || status === 'Cancelled';
+
+    if (!isTerminal && Number.isFinite(lat) && Number.isFinite(lng) && map) {
+        map.flyTo([lat, lng], 15, { animate: true });
+    }
+
+    const modal = document.getElementById('detailsModal');
+    const content = document.getElementById('detailsContent');
+    const title = document.getElementById('detailsTitle');
+    if (!modal || !content) return;
+
+    if (title) {
+        title.textContent = `${type} report - ${timestamp}`;
+    }
+
+    const metaFields = Object.entries(report)
+        .filter(([key]) => !['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','deviceId','reporter_device_id','reporter_device'].includes(key))
+        .map(([key, value]) => `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">${escapeMapHtml(key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()))}</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(formatDetailValue(value))}</dd>
+            </div>
+        `).join('');
+
+    content.innerHTML = `
+        <div class="grid gap-5 lg:grid-cols-[180px_1fr]">
+            ${imageUrl ? `
+                <div>
+                    <button type="button" class="block overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm" onclick="window.openLightbox('${escapeMapHtml(imageUrl)}')">
+                        <img src="${escapeMapHtml(imageUrl)}" alt="Report attachment" class="h-44 w-full object-cover">
+                    </button>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        ${getTypeBadge(type)}
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${escapeMapHtml(timestamp)}</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Description</p>
+                        <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">${escapeMapHtml(description)}</p>
+                    </div>
+                </div>
+            ` : `
+                <div class="col-span-full space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        ${getTypeBadge(type)}
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${escapeMapHtml(timestamp)}</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Description</p>
+                        <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">${escapeMapHtml(description)}</p>
+                    </div>
+                </div>
+            `}
+        </div>
+        <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Status</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800"><span class="rounded-full px-2 py-0.5 text-xs font-semibold ${getNotificationBadgeClass(status)}">${escapeMapHtml(status)}</span></dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Reporter Device ID</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${deviceId ? escapeMapHtml(deviceId) : '-'}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Location</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(location)}</dd>
+            </div>
+            ${metaFields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
+        </dl>
+    `;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function openNotificationDetailsModal(report) {
+    const status = normalizeNotificationStatus(report.status);
+    const type = getNotificationCategory(report.category);
+    const deviceId = getReporterDeviceId(report);
+    const imageUrl = getNotificationImageUrl(report);
+    const description = String(report.description || 'No description provided');
+    const location = getNotificationLocation(report);
+    const timestamp = formatNotificationTimestamp(report);
+
+    const modal = document.getElementById('notificationDetailsModal');
+    const content = document.getElementById('notificationDetailsContent');
+    const title = document.getElementById('notificationDetailsTitle');
+    if (!modal || !content) return;
+
+    if (title) {
+        title.textContent = `${type} report - ${timestamp}`;
+    }
+
+    const metaFields = Object.entries(report)
+        .filter(([key]) => !['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','deviceId','reporter_device_id','reporter_device'].includes(key))
+        .map(([key, value]) => `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">${escapeMapHtml(key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()))}</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(formatDetailValue(value))}</dd>
+            </div>
+        `).join('');
+
+    content.innerHTML = `
+        <div class="grid gap-5 lg:grid-cols-[180px_1fr]">
+            ${imageUrl ? `
+                <div>
+                    <button type="button" class="block overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm" onclick="window.openLightbox('${escapeMapHtml(imageUrl)}')">
+                        <img src="${escapeMapHtml(imageUrl)}" alt="Report attachment" class="h-44 w-full object-cover">
+                    </button>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        ${getTypeBadge(type)}
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${escapeMapHtml(timestamp)}</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Description</p>
+                        <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">${escapeMapHtml(description)}</p>
+                    </div>
+                </div>
+            ` : `
+                <div class="col-span-full space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        ${getTypeBadge(type)}
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${escapeMapHtml(timestamp)}</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Description</p>
+                        <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">${escapeMapHtml(description)}</p>
+                    </div>
+                </div>
+            `}
+        </div>
+        <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Status</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800"><span class="rounded-full px-2 py-0.5 text-xs font-semibold ${getNotificationBadgeClass(status)}">${escapeMapHtml(status)}</span></dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Reporter Device ID</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${deviceId ? escapeMapHtml(deviceId) : '-'}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Location</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(location)}</dd>
+            </div>
+            ${metaFields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
+        </dl>
+    `;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeNotificationDetailsModal() {
+    const modal = document.getElementById('notificationDetailsModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+function getNotificationCategory(category) {
+    return normalizeEmergencyCategory(category) || 'Police';
+}
+
+function getNotificationIcon(category) {
+    const type = getNotificationCategory(category);
+    if (type === 'Fire') return 'images/fire.png';
+    if (type === 'Medic') return 'images/hospital.png';
+    return 'images/police.png';
+}
+
+function getNotificationBadgeClass(status) {
+    if (status === 'Resolved') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'Responding') return 'bg-amber-100 text-amber-700';
+    if (status === 'Cancelled') return 'bg-rose-100 text-rose-700';
+    return 'bg-sky-100 text-sky-700';
+}
+
+function getNotificationImageUrl(report) {
+    const candidate = report?.image_url || report?.photo_url || '';
+    if (!candidate) return '';
+    if (/^https?:\/\//i.test(candidate)) return candidate;
+    const baseUrl = typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : 'https://zjedyulcrxcttbukbynh.supabase.co';
+    return `${baseUrl}/storage/v1/object/public/report-images/${candidate}`;
+}
+
+function getReporterDeviceId(report) {
+    return report?.device_id || report?.deviceId || report?.reporter_device_id || report?.reporter_device || '';
+}
+
+function getNotificationLocation(report) {
+    const lat = report?.latitude ?? report?.lat;
+    const lng = report?.longitude ?? report?.long ?? report?.longtitude;
+    if (lat != null && lng != null && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng))) {
+        return `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+    }
+    return report?.location || report?.address || 'Location unavailable';
+}
+
+function formatNotificationTimestamp(report) {
+    const raw = report?.created_at || report?.updated_at || report?.timestamp || new Date().toISOString();
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return 'Unknown time';
+    return `${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(date)} • ${new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(date)}`;
+}
+
+function renderNotificationPanel() {
+    const listEl = document.getElementById('notificationList');
+    if (!listEl) return;
+
+    const seen = new Set();
+    const items = [];
+    if (Array.isArray(window.allIncidents)) {
+        window.allIncidents.forEach(report => {
+            const id = String(report.id);
+            if (seen.has(id)) return;
+            seen.add(id);
+            const category = getNotificationCategory(report.category);
+            if (notificationFilter !== 'All' && category !== notificationFilter) return;
+            items.push({ report, category });
+        });
+    }
+
+    items.sort((a, b) => {
+        const aTime = new Date(a.report?.created_at || a.report?.updated_at || 0).getTime();
+        const bTime = new Date(b.report?.created_at || b.report?.updated_at || 0).getTime();
+        return bTime - aTime;
     });
+
+    if (!items.length) {
+        listEl.innerHTML = `
+            <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center text-sm text-slate-500">
+                No notifications match the current filter.
+            </div>
+        `;
+        return;
+    }
+
+    listEl.innerHTML = items.map(({ report, category }) => {
+        const status = normalizeNotificationStatus(report.status);
+        const deviceId = getReporterDeviceId(report);
+        const imageUrl = getNotificationImageUrl(report);
+        const isSelected = String(selectedNotificationId) === String(report.id);
+        const description = String(report.description || 'No description provided').slice(0, 140);
+        return `
+            <button type="button"
+                onclick="selectNotification('${report.id}')"
+                class="notification-card w-full rounded-xl border ${isSelected ? 'selected' : 'border-slate-200 bg-white/95'} p-3 text-left shadow-sm hover:border-blue-300 hover:shadow-md">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex items-start gap-2">
+                        <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                            <img src="${getNotificationIcon(category)}" alt="${escapeMapHtml(category)}" class="h-5 w-5 object-contain" onerror="this.style.visibility='hidden'">
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <p class="text-sm font-semibold uppercase tracking-wide text-slate-800">${escapeMapHtml(category)}</p>
+                                <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold ${getNotificationBadgeClass(status)}">${escapeMapHtml(status)}</span>
+                            </div>
+                            <p class="mt-1 text-sm text-slate-700 line-clamp-3">${escapeMapHtml(description)}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3 space-y-1.5 text-xs text-slate-600">
+                    ${deviceId ? `<p><span class="font-semibold text-slate-700">Device ID:</span> ${escapeMapHtml(deviceId)}</p>` : ''}
+                    <p><span class="font-semibold text-slate-700">Time:</span> ${escapeMapHtml(formatNotificationTimestamp(report))}</p>
+                    <p><span class="font-semibold text-slate-700">Location:</span> ${escapeMapHtml(getNotificationLocation(report))}</p>
+                </div>
+                ${imageUrl ? `<img src="${escapeMapHtml(imageUrl)}" alt="Incident preview" class="mt-3 h-24 w-full rounded-lg object-cover border border-slate-200" onerror="this.style.display='none'">` : ''}
+            </button>
+        `;
+    }).join('');
+}
+
+function selectNotification(id) {
+    selectedNotificationId = String(id);
+    renderNotificationPanel();
+
+    const report = window.allIncidents?.find(n => String(n.id) === String(id));
+    if (!report) return;
+
+    if (!map) {
+        openNotificationDetailsModal(report);
+        return;
+    }
+
+    let foundMarker = false;
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            if (String(layer.incidentId) === String(id)) {
+                foundMarker = true;
+                const status = String(layer._report?.status || '').toLowerCase().trim();
+                if (status !== 'resolved' && status !== 'cancelled') {
+                    map.flyTo(layer.getLatLng(), 15, { animate: true });
+                    layer.openPopup();
+                }
+            }
+        });
+    }
+
+    if (!foundMarker) {
+        const status = String(report.status || '').toLowerCase().trim();
+        if (status === 'resolved' || status === 'cancelled') {
+            openNotificationDetailsModal(report);
+            return;
+        }
+
+        const lat = Number(report.latitude || report.lat);
+        const lng = Number(report.longitude || report.long || report.longtitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            map.flyTo([lat, lng], 15, { animate: true });
+        }
+    }
+
+    openNotificationDetailsModal(report);
+}
+
+function panToIncident(id) {
+    selectNotification(id);
 }
 
 async function loadReports() {
@@ -461,7 +807,7 @@ async function loadReports() {
         const { data, error } = await window.supabaseClient
             .from('incidents')
             .select('*')
-            .not('status', 'in', '("resolved","cancelled")');
+            .order('created_at', { ascending: false });
 
         if (error) {
             console.error('Error loading reports:', error);
@@ -469,34 +815,28 @@ async function loadReports() {
         }
         if (!data) return;
 
+        window.allIncidents = (data || []).filter(report => {
+            const lat = report.latitude || report.lat;
+            const lng = report.longitude || report.long || report.longtitude;
+            return lat && lng && isPointInPolygon(lat, lng);
+        });
         window.incidentLayer.clearLayers();
-        data.forEach(report => addIncidentMarker(report));
+        window.allIncidents.forEach(report => addIncidentMarker(report));
+        renderNotificationPanel();
         updateActiveCounters();
     } catch (err) {
         console.error('Exception in loadReports:', err);
     }
 }
 
-function addIncidentMarker(report) {
-    if (!map) return false;
-
-    const id = report.id;
-    if (!id || report.status === 'resolved' || report.status === 'cancelled') return false;
-
-    const lat = report.latitude || report.lat;
-    const lng = report.longitude || report.long || report.longtitude;
-    if (!lat || !lng || !isPointInPolygon(lat, lng)) return false;
-
-    const category = String(report.category || '').toLowerCase().trim();
-    const icon = category.includes('police') ? window.blueIcon : category === 'fire' ? window.redIcon : category.includes('medic') || category.includes('medical') || category.includes('hospital') ? window.greenIcon : window.redIcon;
-
-    const marker = L.marker([lat, lng], { icon }).addTo(window.incidentLayer);
-    marker.incidentId = String(id);
-    marker.incidentCategory = report.category;
-    marker._nearest = getNearestAgencies(report.category, lat, lng);
-
-    const nearestHtml = marker._nearest.length
-        ? marker._nearest.slice(0, 1).map(a => `
+function getIncidentPopupHtml(report, id) {
+    const lat = Number(report.latitude || report.lat);
+    const lng = Number(report.longitude || report.long || report.longtitude);
+    const nearest = (Number.isFinite(lat) && Number.isFinite(lng))
+        ? getNearestAgencies(report.category, lat, lng)
+        : [];
+    const nearestHtml = nearest.length
+        ? nearest.slice(0, 1).map(a => `
             <div style="margin-top:6px;">
               <div style="font-weight:700;color:#0f172a;">Nearest responder: ${escapeMapHtml(a.name)}</div>
               <div style="font-size:12px;color:#64748b;">${escapeMapHtml(a.type)} — ${escapeMapHtml(formatDistance(a.distanceKm))}</div>
@@ -504,7 +844,7 @@ function addIncidentMarker(report) {
           `).join('')
         : `<span style="color:#94a3b8;">No nearby responder found</span>`;
 
-    const popupContent = `
+    return `
         <div style="min-width:220px; max-width:260px;">
             <div style="font-size:14px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:6px;">
                 ${escapeMapHtml((report.category || 'emergency').toUpperCase())}
@@ -538,8 +878,33 @@ function addIncidentMarker(report) {
             </div>
         </div>
     `;
+}
 
-    marker.bindPopup(popupContent, { maxWidth: 260, minWidth: 260, direction: 'auto', autoPan: false });
+function addIncidentMarker(report) {
+    if (!map) return false;
+
+    const id = String(report.id);
+    if (report.status === 'resolved' || report.status === 'cancelled') return false;
+
+    if (window.incidentLayer) {
+        const exists = window.incidentLayer.getLayers().some(l => String(l.incidentId) === id);
+        if (exists) return false;
+    }
+
+    const lat = report.latitude || report.lat;
+    const lng = report.longitude || report.long || report.longtitude;
+    if (!lat || !lng || !isPointInPolygon(lat, lng)) return false;
+
+    const category = String(report.category || '').toLowerCase().trim();
+    const icon = category.includes('police') ? window.blueIcon : category === 'fire' ? window.redIcon : category.includes('medic') || category.includes('medical') || category.includes('hospital') ? window.greenIcon : window.redIcon;
+
+    const marker = L.marker([lat, lng], { icon }).addTo(window.incidentLayer);
+    marker.incidentId = String(id);
+    marker.incidentCategory = report.category;
+    marker._report = report;
+    marker._nearest = getNearestAgencies(report.category, lat, lng);
+
+    marker.bindPopup(getIncidentPopupHtml(report, id), { maxWidth: 260, minWidth: 260, direction: 'auto', autoPan: false });
 
     let popupPinned = false;
     let popupCloseTimer = null;
@@ -648,7 +1013,18 @@ function removeMarkerFromMap(id) {
             window.incidentLayer.removeLayer(layer);
         }
     });
+    renderNotificationPanel();
+    renderNotificationPanel();
     updateActiveCounters();
+}
+
+function bindNotificationPanelEvents() {
+    const filterEl = document.getElementById('notificationFilter');
+    if (!filterEl) return;
+    filterEl.addEventListener('change', (event) => {
+        notificationFilter = event.target.value || 'All';
+        renderNotificationPanel();
+    });
 }
 
 window.supabaseClient
@@ -658,9 +1034,16 @@ window.supabaseClient
         const lng = payload.new.longitude || payload.new.long;
         if (!lat || !lng || !isPointInPolygon(lat, lng)) return;
 
+        if (!window.allIncidents) window.allIncidents = [];
+        if (!window.allIncidents.find(n => String(n.id) === String(payload.new.id))) {
+            window.allIncidents.unshift(payload.new);
+        }
+
         const markerAdded = addIncidentMarker(payload.new);
-        if (!markerAdded) return;
+        renderNotificationPanel();
         updateActiveCounters();
+
+        if (!markerAdded) return;
 
         try {
             new Audio('https://www.soundjay.com/buttons/beep-01a.mp3').play().catch(() => {});
@@ -671,7 +1054,23 @@ window.supabaseClient
         try { showNewReportToast(payload.new); } catch (e) { /* ignore */ }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'incidents' }, (payload) => {
+        const lat = payload.new.latitude || payload.new.lat;
+        const lng = payload.new.longitude || payload.new.long;
+        if (!lat || !lng || !isPointInPolygon(lat, lng)) {
+            if (window.allIncidents) {
+                window.allIncidents = window.allIncidents.filter(n => String(n.id) !== String(payload.new.id));
+            }
+            removeMarkerFromMap(payload.new.id);
+            updateActiveCounters();
+            renderNotificationPanel();
+            return;
+        }
+
         const id = String(payload.new.id);
+        if (window.allIncidents) {
+            window.allIncidents = window.allIncidents.map(n => String(n.id) === id ? payload.new : n);
+        }
+        
         const status = (payload.new.status || '').toLowerCase().trim();
         if (status === 'resolved' || status === 'cancelled') {
             removeMarkerFromMap(id);
@@ -679,10 +1078,14 @@ window.supabaseClient
             removeMarkerFromMap(id);
             addIncidentMarker(payload.new);
         }
+        renderNotificationPanel();
         updateActiveCounters();
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'incidents' }, (payload) => {
         const id = String(payload.old.id);
+        if (window.allIncidents) {
+            window.allIncidents = window.allIncidents.filter(n => String(n.id) !== String(id));
+        }
         removeMarkerFromMap(id);
         updateActiveCounters();
     })
@@ -695,6 +1098,7 @@ setInterval(() => {
 
 window.initializeMap = initializeMap;
 window.centerMap = centerMap;
+window.selectNotification = selectNotification;
 
 function tryInitializeMap() {
     const mapEl = document.getElementById('map');
@@ -706,6 +1110,7 @@ function tryInitializeMap() {
         console.error('Leaflet is not loaded during init');
         return;
     }
+    bindNotificationPanelEvents();
     initializeMap();
 }
 

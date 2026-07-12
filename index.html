@@ -28,6 +28,14 @@
             backdrop-filter: blur(8px);
             z-index: -1;
         }
+        .notification-card {
+            transition: all 0.2s ease;
+        }
+        .notification-card.selected {
+            border-color: #3b82f6;
+            background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(255,255,255,0.95));
+            box-shadow: 0 12px 28px rgba(37, 99, 235, 0.16);
+        }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -56,6 +64,12 @@
                     Call Records
                 </a>
             </li>
+            <li>
+                <a href="#analytics" onclick="switchView('analytics'); return false;" id="nav-analytics" class="flex items-center gap-3 text-white font-bold hover:bg-gray-400 px-8 py-4">
+                    <img src="images/analytics.png" alt="" class="w-5 h-5 shrink-0 object-contain" onerror="this.style.visibility='hidden'">
+                    Analytics
+                </a>
+            </li>
         </ul>
 
         <div class="mt-auto border-t border-white/30 p-4">
@@ -63,6 +77,7 @@
                 <div id="idleState">
                     <p class="text-white/60 text-sm">Waiting for call...</p>
                 </div>
+                <div id="incoming-calls-container" class="hidden space-y-3"></div>
                 <div id="incomingState" class="hidden">
                     <p class="text-white text-sm font-medium mb-3">Incoming call</p>
                     <div class="flex justify-center gap-4">
@@ -106,66 +121,58 @@
         <div id="view-dashboard">
             <div class="flex items-center justify-between mb-2">
                 <h1 class="text-4xl text-white font-bold">Dashboard</h1>
-            <div class="relative">
-                <div id="activeCounter" class="flex items-center gap-3 bg-white backdrop-blur rounded-lg px-3 py-1">
-                    <img src="images/notification.png" alt="" class="w-5 h-5 object-contain cursor-pointer" onclick="showAllReports()" onerror="this.style.visibility='hidden'">
-                    <button onclick="showCategoryReports('Police')" class="text-center hover:opacity-80 transition-opacity">
-                        <p class="text-[10px] text-gray-500 font-medium leading-none">Police</p>
-                        <p id="policeCount" class="text-sm font-bold text-blue-600 leading-tight">0</p>
-                    </button>
-                    <div class="w-px h-6 bg-gray-300"></div>
-                    <button onclick="showCategoryReports('Fire')" class="text-center hover:opacity-80 transition-opacity">
-                        <p class="text-[10px] text-gray-500 font-medium leading-none">Fire</p>
-                        <p id="fireCount" class="text-sm font-bold text-red-600 leading-tight">0</p>
-                    </button>
-                    <div class="w-px h-6 bg-gray-300"></div>
-                    <button onclick="showCategoryReports('Medic')" class="text-center hover:opacity-80 transition-opacity">
-                        <p class="text-[10px] text-gray-500 font-medium leading-none">Medic</p>
-                        <p id="medicCount" class="text-sm font-bold text-green-600 leading-tight">0</p>
-                    </button>
-                </div>
-                <div id="categoryReportsPanel" class="hidden absolute top-full right-0 mt-2 w-80 bg-white/95 backdrop-blur rounded-lg shadow-xl border border-gray-200 z-[9999] max-h-96 overflow-y-auto">
-                    <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200">
-                        <p id="categoryReportsTitle" class="text-sm font-bold text-gray-800 uppercase"></p>
-                        <button onclick="closeCategoryReports()" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
-                    </div>
-                    <div id="categoryReportsList" class="p-2"></div>
-                    <div id="categoryNoReports" class="hidden p-4 text-center text-gray-500 text-sm">No reports found</div>
-                </div>
-            </div>
             </div>
 
-            <div class="relative w-full h-[80vh] rounded-lg overflow-hidden" style="min-height: 480px;">
-                <div id="map" class="w-full h-full"></div>
-                <div id="newReportToastStack" class="absolute top-3 left-3 flex flex-col gap-3 z-[1000]">
-                    <div id="newReportToast0" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
-                        <div class="toast-text text-sm font-semibold leading-6"></div>
+            <div class="flex flex-col lg:flex-row gap-4 w-full h-[80vh] rounded-lg overflow-hidden" style="min-height: 480px;">
+                <div class="relative flex-1 min-h-[480px] rounded-lg overflow-hidden">
+                    <div id="map" class="w-full h-full"></div>
+                    <div id="newReportToastStack" class="absolute top-3 left-3 flex flex-col gap-3 z-[1000]">
+                        <div id="newReportToast0" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
+                            <div class="toast-text text-sm font-semibold leading-6"></div>
+                        </div>
+                        <div id="newReportToast1" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
+                            <div class="toast-text text-sm font-semibold leading-6"></div>
+                        </div>
+                        <div id="newReportToast2" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
+                            <div class="toast-text text-sm font-semibold leading-6"></div>
+                        </div>
                     </div>
-                    <div id="newReportToast1" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
-                        <div class="toast-text text-sm font-semibold leading-6"></div>
+                    <div class="absolute bottom-10 right-3 z-[1000]">
+                        <button onclick="centerMap()" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-bold px-3 py-2 rounded shadow border border-gray-300">Re-center Map</button>
                     </div>
-                    <div id="newReportToast2" class="new-report-toast-slot hidden w-96 max-w-[90vw] bg-blue-600 text-white rounded-xl shadow-2xl p-4">
-                        <div class="toast-text text-sm font-semibold leading-6"></div>
+                    <div class="absolute top-3 right-3 flex flex-col gap-3 z-[1000]">
+                        <button onclick="toggleAll()" id="btnAll" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-semibold px-3 py-2 rounded shadow border border-gray-300">Hide All</button>
+                        <button onclick="togglePolice()" id="btnPolice" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                            <img src="images/police.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                            <span class="text-sm font-semibold text-gray-800 leading-none">Police</span>
+                        </button>
+                        <button onclick="toggleFire()" id="btnFire" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                            <img src="images/fire.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                            <span class="text-sm font-semibold text-gray-800 leading-none">Fire</span>
+                        </button>
+                        <button onclick="toggleHospital()" id="btnHospital" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
+                            <img src="images/hospital.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
+                            <span class="text-sm font-semibold text-gray-800 leading-none">Hospital</span>
+                        </button>
                     </div>
                 </div>
-                <div class="absolute bottom-10 right-3 z-[1000]">
-                    <button onclick="centerMap()" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-bold px-3 py-2 rounded shadow border border-gray-300">Re-center Map</button>
-                </div>
-                <div class="absolute top-3 right-3 flex flex-col gap-3 z-[1000]">
-                    <button onclick="toggleAll()" id="btnAll" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-semibold px-3 py-2 rounded shadow border border-gray-300">Hide All</button>
-                    <button onclick="togglePolice()" id="btnPolice" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
-                        <img src="images/police.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
-                        <span class="text-sm font-semibold text-gray-800 leading-none">Police</span>
-                    </button>
-                    <button onclick="toggleFire()" id="btnFire" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
-                        <img src="images/fire.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
-                        <span class="text-sm font-semibold text-gray-800 leading-none">Fire</span>
-                    </button>
-                    <button onclick="toggleHospital()" id="btnHospital" class="flex items-center gap-2 bg-white/90 hover:bg-white rounded shadow border border-gray-300 px-3 py-2">
-                        <img src="images/hospital.png" alt="" class="w-5 h-5 object-contain" onerror="this.style.visibility='hidden'">
-                        <span class="text-sm font-semibold text-gray-800 leading-none">Hospital</span>
-                    </button>
-                </div>
+
+                <aside class="w-full lg:w-[360px] xl:w-[400px] bg-white/90 backdrop-blur rounded-xl border border-white/70 shadow-2xl shadow-black/10 flex flex-col min-h-[320px] lg:h-full">
+                    <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-900">Notifications</p>
+                            <p class="text-xs text-slate-500">Live emergency incidents</p>
+                        </div>
+                        <label class="sr-only" for="notificationFilter">Filter notifications</label>
+                        <select id="notificationFilter" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                            <option value="All">All</option>
+                            <option value="Police">Police</option>
+                            <option value="Fire">Fire</option>
+                            <option value="Medic">Medic</option>
+                        </select>
+                    </div>
+                    <div id="notificationList" class="flex-1 overflow-y-auto p-3 space-y-3"></div>
+                </aside>
             </div>
         </div>
 
@@ -265,6 +272,28 @@
             </div>
         </div>
 
+        <div id="view-analytics" class="hidden">
+            <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report tracking</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">System Analytics</h1>
+                    </div>
+                    <p id="analyticsSummary" class="text-sm font-medium text-slate-500">Loading analytics...</p>
+                </div>
+                <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div><h2 class="text-base font-bold text-slate-800">Report Volume by Type</h2><p class="mt-1 text-sm text-slate-500">Categories ranked from highest to lowest report volume.</p></div>
+                        <label class="flex items-center gap-2 text-sm font-medium text-slate-600" for="analyticsRange">Time range
+                            <select id="analyticsRange" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All Dates</option><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select>
+                        </label>
+                    </div>
+                    <div id="analyticsKpis" class="grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+                    <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Incident Type</th><th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Reports Sent</th><th class="min-w-72 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Volume Share</th><th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
+                </section>
+            </div>
+        </div>
+
     </main>
 
     <div id="imageLightbox" class="hidden fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4" onclick="closeLightbox()">
@@ -300,13 +329,13 @@
             document.getElementById('view-dashboard').classList.add('hidden');
             document.getElementById('view-reports').classList.add('hidden');
             document.getElementById('view-calls').classList.add('hidden');
+            document.getElementById('view-analytics').classList.add('hidden');
 
-            document.getElementById('nav-dashboard').classList.remove('bg-gray-600');
-            document.getElementById('nav-dashboard').classList.add('hover:bg-gray-400');
-            document.getElementById('nav-reports').classList.remove('bg-gray-600');
-            document.getElementById('nav-reports').classList.add('hover:bg-gray-400');
-            document.getElementById('nav-calls').classList.remove('bg-gray-600');
-            document.getElementById('nav-calls').classList.add('hover:bg-gray-400');
+            ['dashboard', 'reports', 'calls', 'analytics'].forEach((name) => {
+                const nav = document.getElementById('nav-' + name);
+                nav.classList.remove('bg-gray-600');
+                nav.classList.add('hover:bg-gray-400');
+            });
 
             const target = document.getElementById('view-' + view);
             if (target) target.classList.remove('hidden');
@@ -318,7 +347,6 @@
             }
 
             if (view === 'reports') {
-                console.log('[Reports] switchView opened reports section');
                 if (typeof window.loadReportRecords === 'function') {
                     window.loadReportRecords({ showLoading: true });
                 } else {
@@ -330,14 +358,84 @@
                 if (typeof window.initializeMap === 'function' && !window._mapInitialized) {
                     window.initializeMap();
                 }
+            } else if (view === 'analytics') {
+                loadAnalytics();
             }
+
+            if (window.location.hash !== '#' + view) window.history.replaceState(null, '', '#' + view);
         }
+
+        const analyticsPresentation = {
+            Fire: ['bg-red-500', 'bg-red-50 text-red-700 ring-red-600/20', 'bg-red-50 text-red-600'],
+            Medical: ['bg-emerald-500', 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', 'bg-emerald-50 text-emerald-600'],
+            Police: ['bg-blue-600', 'bg-blue-50 text-blue-700 ring-blue-600/20', 'bg-blue-50 text-blue-600'],
+            Other: ['bg-slate-500', 'bg-slate-100 text-slate-700 ring-slate-500/20', 'bg-slate-100 text-slate-600']
+        };
+
+        function analyticsCategory(value) {
+            const category = String(value || 'Other').toLowerCase();
+            if (category.includes('fire')) return 'Fire';
+            if (category.includes('medic') || category.includes('medical') || category.includes('ambulance')) return 'Medical';
+            if (category.includes('police')) return 'Police';
+            return value ? String(value) : 'Other';
+        }
+
+        function analyticsStartDate(range) {
+            if (range === 'all') return null;
+            const date = new Date();
+            date.setHours(0, 0, 0, 0);
+            if (range === 'week') date.setDate(date.getDate() - 6);
+            if (range === 'month') date.setDate(date.getDate() - 29);
+            return date;
+        }
+
+        function renderAnalyticsRows(records) {
+            const counts = records.reduce((result, record) => {
+                const category = analyticsCategory(record.category);
+                result[category] = (result[category] || 0) + 1;
+                return result;
+            }, {});
+            const total = records.length;
+            const types = Object.entries(counts).map(([name, count]) => ({ name, count, percent: total ? count / total * 100 : 0, style: analyticsPresentation[name] || analyticsPresentation.Other })).sort((a, b) => b.count - a.count);
+            const top = types[0];
+            const hours = records.reduce((buckets, record) => {
+                const date = new Date(record.created_at);
+                if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++;
+                return buckets;
+            }, [0, 0, 0, 0, 0, 0]);
+            const peak = hours.indexOf(Math.max(...hours));
+            const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
+            const stats = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports received` : 'No reports found'], ['Total Reports Received', total.toLocaleString(), 'Across all categories'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Tracked Categories', types.length, 'Emergency report types']];
+            document.getElementById('analyticsSummary').textContent = `${total.toLocaleString()} reports received across all categories`;
+            document.getElementById('analyticsKpis').innerHTML = stats.map(([label, value, note]) => `<article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-xl font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
+            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="transition hover:bg-blue-50/50"><td class="px-4 py-4 font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-3 py-1 text-sm font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected date range.</td></tr>';
+        }
+
+        async function loadAnalytics() {
+            const rows = document.getElementById('analyticsRows');
+            const summary = document.getElementById('analyticsSummary');
+            if (!rows || !window.supabaseClient) return;
+            rows.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-400">Loading reports...</td></tr>';
+            summary.textContent = 'Loading analytics...';
+            let query = window.supabaseClient.from('incidents').select('category, created_at');
+            const start = analyticsStartDate(document.getElementById('analyticsRange').value);
+            if (start) query = query.gte('created_at', start.toISOString());
+            const { data, error } = await query;
+            if (error) { summary.textContent = 'Unable to load analytics.'; rows.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-red-500">${escapeHtml(error.message)}</td></tr>`; return; }
+            renderAnalyticsRows(Array.isArray(data) ? data : []);
+        }
+
+        document.getElementById('analyticsRange').addEventListener('change', loadAnalytics);
+        window.addEventListener('hashchange', () => switchView(window.location.hash.slice(1) || 'dashboard'));
+        window.addEventListener('DOMContentLoaded', () => switchView(window.location.hash.slice(1) || 'dashboard'));
 
         window.addEventListener('call-records-updated', renderCallRecords);
     </script>
 
     <audio id="remoteAudio" autoplay playsinline></audio>
 
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="socket-call-manager.js"></script>
     <script src="map.js"></script>
     <script>
         let allReports = [];
@@ -420,15 +518,6 @@
             document.getElementById('detailsModal').classList.remove('flex');
         }
 
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
         function normalizeReportType(category) {
             const value = String(category || '').toLowerCase().trim();
             if (value === 'medic' || value === 'medical' || value === 'hospital') return 'Medic';
@@ -449,8 +538,19 @@
         }
 
         function getReportDate(row) {
-            const date = new Date(row.created_at);
+            const date = new Date(row.created_at || row.updated_at || row.timestamp);
             return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function sortReportsNewestFirst(reports) {
+            return [...reports].sort((a, b) => {
+                const aTime = getReportDate(a)?.getTime();
+                const bTime = getReportDate(b)?.getTime();
+
+                if (aTime == null) return bTime == null ? 0 : 1;
+                if (bTime == null) return -1;
+                return bTime - aTime;
+            });
         }
 
         function formatDate(date) {
@@ -502,7 +602,7 @@
             const typeFilter = document.getElementById('typeFilter').value;
             const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
 
-            return allReports.filter(row => {
+            return sortReportsNewestFirst(allReports.filter(row => {
                 const type = normalizeReportType(row.category);
                 const date = getReportDate(row);
                 const haystack = [
@@ -515,7 +615,7 @@
                 return matchesDateFilter(date, dateFilter)
                     && (typeFilter === 'all' || type === typeFilter)
                     && (!searchTerm || haystack.includes(searchTerm));
-            });
+            }));
         }
 
         function renderReports() {
@@ -582,8 +682,6 @@
         }
 
         async function loadReportRecords({ showLoading = false } = {}) {
-            console.log('[Reports] loadReportRecords started', { showLoading, hasSupabase: !!window.supabaseClient });
-
             if (showLoading) {
                 document.getElementById('output').innerHTML = '<div class="p-8 text-center text-slate-400">Loading...</div>';
                 document.getElementById('recordCount').textContent = 'Loading reports...';
@@ -598,9 +696,7 @@
             const { data, error } = await window.supabaseClient
                 .from('incidents')
                 .select('*')
-                .order('created_at', { ascending: false, nullsFirst: true });
-
-            console.log('[Reports] Supabase query result', { dataLength: Array.isArray(data) ? data.length : 'non-array', error });
+                .order('created_at', { ascending: false, nullsFirst: false });
 
             if (error) {
                 console.error('[Reports] Supabase query error:', error);
@@ -655,7 +751,6 @@
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                console.log('[Reports] visibilitychange -> visible, reloading reports');
                 loadReportRecords();
             }
         });
@@ -663,10 +758,9 @@
         window.supabaseClient
             .channel('report-records-updates')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, () => {
-                console.log('[Reports] Realtime incident change detected, reloading reports');
                 loadReportRecords();
             })
-            .subscribe((status) => console.log('Report records subscription:', status));
+            .subscribe();
 
         window.loadReportRecords = loadReportRecords;
     </script>

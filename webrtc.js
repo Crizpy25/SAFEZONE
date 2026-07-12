@@ -156,6 +156,7 @@ function getStoredPeerId() {
     return sessionStorage.getItem('adminPeerId');
 }
 
+
 /**
  * Generate a unique PeerJS ID for this browser session.
  */
@@ -290,6 +291,50 @@ async function initPeer() {
         incomingCall = call;
         activeCallRecordId = createIncomingCallRecord(call);
 
+        // Auto-answer if this call was accepted via Socket.io dispatch
+        if (window.pendingSocketAccept) {
+            window.pendingSocketAccept = false;
+            incomingCall.answer(localStream || new MediaStream());
+            incomingCall.on('stream', (remoteStream) => {
+                transitionTo(CALL_STATES.CONNECTED, 'remote stream received (socket dispatch)');
+                remoteAudio.srcObject = remoteStream;
+                hide(incomingState);
+                hide(document.getElementById('incoming-calls-container'));
+                show(activeState);
+                setStatus('Call active');
+
+                seconds = 0;
+                clearInterval(timerInterval);
+                timerInterval = setInterval(() => {
+                    seconds++;
+                    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+                    const s = String(seconds % 60).padStart(2, '0');
+                    if (callTimer) callTimer.textContent = `${m}:${s}`;
+                }, 1000);
+            });
+            incomingCall.on('close', async () => {
+                if (incomingCall === call) {
+                    if (activeCallRecordId && !currentCall) {
+                        updateCallRecord(activeCallRecordId, {
+                            status: 'ended',
+                            durationSeconds: seconds,
+                            endedAt: new Date().toISOString()
+                        });
+                    }
+                    incomingCall = null;
+                    transitionTo(CALL_STATES.ENDED, 'call closed');
+                    await setCallStatus(CALL_STATUS.available);
+                    resetUI();
+                }
+            });
+            incomingCall.on('error', async () => {
+                transitionTo(CALL_STATES.ENDED, 'call error');
+                await setCallStatus(CALL_STATUS.available);
+                resetUI();
+            });
+            return;
+        }
+
         // Caller hung up before we answered
         incomingCall.on('close', async () => {
             if (incomingCall === call) {
@@ -367,6 +412,7 @@ async function initPeer() {
  */
 function acceptCall() {
     if (!incomingCall || !isDashboard) return;
+    window.pendingSocketAccept = false;
 
     transitionTo(CALL_STATES.CONNECTING, 'accepting incoming call');
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -446,7 +492,19 @@ function endCall() {
         currentCall.close();
         currentCall = null;
     }
+    notifyDispatchCallEnded();
     // resetUI() is invoked by currentCall.on('close')
+}
+
+function notifyDispatchCallEnded() {
+    const dispatchClient = getSocketCallDispatchClient();
+    if (!dispatchClient || !dispatchClient.isConnected || !adminId) return;
+    try {
+        dispatchClient.socket.emit('end_call', {
+            adminId,
+            callId: activeCallRecordId || `peer-${Date.now()}`
+        });
+    } catch (e) { /* ignore */ }
 }
 
 /**
@@ -469,6 +527,7 @@ async function resetUI() {
     if (callTimer) callTimer.textContent = '00:00';
 
     pendingIncomingUi = false;
+    window.pendingSocketAccept = false;
     hide(incomingState);
     hide(activeState);
     show(idleState);
