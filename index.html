@@ -188,20 +188,24 @@
                 <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
                         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <label class="sr-only" for="dateFilter">Filter by date</label>
-                            <select id="dateFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                                <option value="all">All Dates</option>
-                                <option value="today">Today</option>
-                                <option value="week">Last 7 Days</option>
-                                <option value="month">Last 30 Days</option>
-                            </select>
-                            <label class="sr-only" for="typeFilter">Filter by type</label>
-                            <select id="typeFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                                <option value="all">All</option>
-                                <option value="Fire">Fire</option>
-                                <option value="Medic">Medical</option>
-                                <option value="Police">Police</option>
-                            </select>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</span>
+                                <select id="dateFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                                    <option value="all">All Dates</option>
+                                    <option value="today">Today</option>
+                                    <option value="week">Last 7 Days</option>
+                                    <option value="month">Last 30 Days</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Categories</span>
+                                <select id="typeFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                                    <option value="all">All</option>
+                                    <option value="Fire">Fire</option>
+                                    <option value="Medic">Medical</option>
+                                    <option value="Police">Police</option>
+                                </select>
+                            </div>
                         </div>
                         <label class="relative block w-full lg:max-w-sm" for="searchInput">
                             <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
@@ -217,25 +221,39 @@
                     </div>
                 </section>
             </div>
-            <div id="modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50" onclick="closeModal()">
-                <div class="relative max-w-2xl w-full mx-4" onclick="event.stopPropagation()">
-                    <button onclick="closeModal()" class="absolute -top-10 right-0 text-white text-sm hover:text-gray-300">Close</button>
-                    <img id="modal-img" src="" alt="Report attachment preview" class="w-full rounded-lg shadow-xl" />
-                </div>
-            </div>
-            <div id="detailsModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-40 p-4" onclick="closeDetailsModal()">
-                <div class="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
-                    <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report details</p>
-                            <h2 id="detailsTitle" class="text-xl font-bold text-slate-900">Report</h2>
-                        </div>
-                        <button type="button" onclick="closeDetailsModal()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
-                    </div>
-                    <div id="detailsContent" class="max-h-[calc(90vh-82px)] overflow-y-auto p-5"></div>
-                </div>
-            </div>
         </div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9998]" onclick="closeModal()">
+        <div class="relative max-w-2xl w-full mx-4" onclick="event.stopPropagation()">
+            <button onclick="closeModal()" class="absolute -top-10 right-0 text-white text-sm hover:text-gray-300">Close</button>
+            <img id="modal-img" src="" alt="Report attachment preview" class="w-full rounded-lg shadow-xl" />
+        </div>
+    </div>
+    <div id="detailsModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9998] p-4" onclick="closeDetailsModal()">
+        <div class="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report details</p>
+                    <h2 id="detailsTitle" class="text-xl font-bold text-slate-900">Report</h2>
+                </div>
+                <button type="button" onclick="closeDetailsModal()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
+            </div>
+            <div id="detailsContent" class="max-h-[calc(90vh-82px)] overflow-y-auto p-5"></div>
+        </div>
+    </div>
+    <div id="notificationDetailsModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9998] p-4" onclick="closeNotificationDetailsModal()">
+        <div class="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Notification details</p>
+                    <h2 id="notificationDetailsTitle" class="text-xl font-bold text-slate-900">Report</h2>
+                </div>
+                <button type="button" onclick="closeNotificationDetailsModal()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
+            </div>
+            <div id="notificationDetailsContent" class="max-h-[calc(90vh-82px)] overflow-y-auto p-5"></div>
+        </div>
+    </div>
 
         <div id="view-calls" class="hidden">
             <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
@@ -244,21 +262,32 @@
                         <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Call tracking</p>
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">Call Records</h1>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <p id="callRecordCount" class="text-sm font-medium text-slate-500">Loading calls...</p>
-                        <button onclick="clearCallRecords()" class="bg-white text-black font-semibold py-2 px-4 rounded-lg transition">
+                    <p id="callRecordCount" class="text-sm font-medium text-slate-500">Loading calls...</p>
+                </div>
+                <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Search</span>
+                            <label class="relative block w-full lg:max-w-sm" for="callSearchInput">
+                                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                        <path d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </span>
+                                <input id="callSearchInput" type="search" placeholder="Search calls..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                            </label>
+                        </div>
+                        <button onclick="clearCallRecords()" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 self-end">
                             Clear Records
                         </button>
                     </div>
-                </div>
-                <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
                             <thead class="bg-slate-100/80">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
-                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Time</th>
-                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Duration</th>
+                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</th>
+                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
+                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
@@ -283,13 +312,13 @@
                 </div>
                 <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div><h2 class="text-base font-bold text-slate-800">Report Volume by Type</h2><p class="mt-1 text-sm text-slate-500">Categories ranked from highest to lowest report volume.</p></div>
-                        <label class="flex items-center gap-2 text-sm font-medium text-slate-600" for="analyticsRange">Time range
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Time range</span>
                             <select id="analyticsRange" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All Dates</option><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select>
-                        </label>
+                        </div>
                     </div>
                     <div id="analyticsKpis" class="grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 xl:grid-cols-4"></div>
-                    <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Incident Type</th><th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Reports Sent</th><th class="min-w-72 px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Volume Share</th><th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
+                    <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Incident Type</th><th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Reports Sent</th><th class="min-w-72 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Volume Share</th><th class="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
                 </section>
             </div>
         </div>
@@ -358,6 +387,9 @@
                 if (typeof window.initializeMap === 'function' && !window._mapInitialized) {
                     window.initializeMap();
                 }
+                if (typeof window.refreshMapSize === 'function') {
+                    requestAnimationFrame(() => window.refreshMapSize());
+                }
             } else if (view === 'analytics') {
                 loadAnalytics();
             }
@@ -408,7 +440,7 @@
             const stats = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports received` : 'No reports found'], ['Total Reports Received', total.toLocaleString(), 'Across all categories'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Tracked Categories', types.length, 'Emergency report types']];
             document.getElementById('analyticsSummary').textContent = `${total.toLocaleString()} reports received across all categories`;
             document.getElementById('analyticsKpis').innerHTML = stats.map(([label, value, note]) => `<article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-xl font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
-            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="transition hover:bg-blue-50/50"><td class="px-4 py-4 font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-3 py-1 text-sm font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected date range.</td></tr>';
+            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50"><td class="whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-3 py-2 text-xs"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-3 py-2 text-xs"><div class="h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-3 py-2 text-right text-xs font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected date range.</td></tr>';
         }
 
         async function loadAnalytics() {
@@ -537,13 +569,49 @@
             return `<span class="inline-flex min-w-[92px] justify-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${styles[type] || styles.Unknown}">${escapeHtml(type)}</span>`;
         }
 
+        function getCompactTypeBadge(type) {
+            const styles = {
+                Fire: 'bg-red-50 text-red-700',
+                Medic: 'bg-blue-50 text-blue-700',
+                Police: 'bg-indigo-50 text-indigo-700',
+                Unknown: 'bg-slate-100 text-slate-600'
+            };
+
+            return `<span class="inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[type] || styles.Unknown}">${escapeHtml(type)}</span>`;
+        }
+
         function getReportDate(row) {
             const date = new Date(row.created_at || row.updated_at || row.timestamp);
             return Number.isNaN(date.getTime()) ? null : date;
         }
 
+        function normalizeReportStatus(status) {
+            const value = String(status || '').toLowerCase().trim();
+            if (value.includes('respond')) return 'Responding';
+            if (value.includes('resolve')) return 'Resolved';
+            if (value.includes('cancel')) return 'Cancelled';
+            return 'Active';
+        }
+
+        function getReportStatusBadge(status) {
+            const normalized = normalizeReportStatus(status);
+            const styles = {
+                Active: 'bg-sky-100 text-sky-700',
+                Responding: 'bg-amber-100 text-amber-700',
+                Resolved: 'bg-emerald-100 text-emerald-700',
+                Cancelled: 'bg-rose-100 text-rose-700'
+            };
+            return `<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[normalized] || styles.Active}">${normalized}</span>`;
+        }
+
         function sortReportsNewestFirst(reports) {
             return [...reports].sort((a, b) => {
+                const aStatus = normalizeReportStatus(a.status);
+                const bStatus = normalizeReportStatus(b.status);
+                const aActive = aStatus === 'Active' ? 0 : 1;
+                const bActive = bStatus === 'Active' ? 0 : 1;
+                if (aActive !== bActive) return aActive - bActive;
+
                 const aTime = getReportDate(a)?.getTime();
                 const bTime = getReportDate(b)?.getTime();
 
@@ -609,6 +677,7 @@
                     formatDate(date),
                     formatTime(date),
                     type,
+                    normalizeReportStatus(row.status),
                     row.description
                 ].join(' ').toLowerCase();
 
@@ -642,11 +711,12 @@
                     <table class="min-w-full divide-y divide-slate-200">
                         <thead class="bg-slate-100/80">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Time</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Type</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Description</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Image Attachment</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Type</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Description</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Image</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
@@ -656,21 +726,23 @@
                                 const imgUrl = getImageUrl(row.image_url);
                                 const description = row.description || 'No description provided';
                                 const reportIndex = allReports.indexOf(row);
+                                const statusBadge = getReportStatusBadge(row.status);
 
                                 return `
                                     <tr class="cursor-pointer transition hover:bg-blue-50/50" data-report-index="${reportIndex}" tabindex="0" aria-label="Open report details">
-                                        <td class="whitespace-nowrap px-4 py-4 text-sm font-medium text-slate-800">${escapeHtml(formatDate(date))}</td>
-                                        <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-500">${escapeHtml(formatTime(date))}</td>
-                                        <td class="px-4 py-4">${getTypeBadge(type)}</td>
-                                        <td class="max-w-[280px] px-4 py-4 text-sm text-slate-600 sm:max-w-md lg:max-w-xl">
-                                            <p class="truncate" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs">${statusBadge}</td>
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(date))}</td>
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(date))}</td>
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs">${getCompactTypeBadge(type)}</td>
+                                        <td class="max-w-[200px] px-3 py-2 text-xs text-slate-600">
+                                            <p class="line-clamp-1" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
                                         </td>
-                                        <td class="whitespace-nowrap px-4 py-4">
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs">
                                             ${imgUrl ? `
-                                                <button type="button" class="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm outline-none ring-blue-500 transition hover:scale-[1.03] hover:shadow-md focus:ring-2" data-preview-src="${escapeHtml(imgUrl)}" aria-label="Preview attached report image">
-                                                    <img src="${escapeHtml(imgUrl)}" alt="Report attachment thumbnail" class="h-12 w-12 object-cover" onerror="this.closest('button').outerHTML='<span class=&quot;text-xs text-slate-400&quot;>No image</span>'">
+                                                <button type="button" class="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-slate-100 outline-none ring-blue-500 transition hover:scale-[1.05] focus:ring-2" data-preview-src="${escapeHtml(imgUrl)}" aria-label="Preview attached report image">
+                                                    <img src="${escapeHtml(imgUrl)}" alt="Report attachment thumbnail" class="h-8 w-8 object-cover" onerror="this.closest('button').outerHTML='<span class=&quot;text-[10px] text-slate-400&quot;>No image</span>'">
                                                 </button>
-                                            ` : '<span class="text-xs text-slate-400">No image</span>'}
+                                            ` : '<span class="text-[10px] text-slate-400">No image</span>'}
                                         </td>
                                     </tr>
                                 `;
@@ -818,7 +890,19 @@
             const tbody = document.getElementById('callRecordsBody');
             if (!tbody) return;
 
-            if (!records.length) {
+            const searchTerm = String(document.getElementById('callSearchInput')?.value || '').toLowerCase().trim();
+            const filtered = searchTerm
+                ? records.filter(record => {
+                    const haystack = [
+                        formatDate(record.receivedAt || record.timestamp),
+                        formatTime(record.receivedAt || record.timestamp),
+                        formatDuration(record.durationSeconds)
+                    ].join(' ').toLowerCase();
+                    return haystack.includes(searchTerm);
+                })
+                : records;
+
+            if (!filtered.length) {
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="3" class="px-4 py-8 text-center text-slate-400">No call records yet.</td>
@@ -827,11 +911,21 @@
                 return;
             }
 
-            tbody.innerHTML = records.map(record => `
-                <tr class="hover:bg-slate-50">
-                    <td class="px-4 py-4 text-sm font-medium text-slate-800">${escapeHtml(formatDate(record.receivedAt || record.timestamp))}</td>
-                    <td class="px-4 py-4 text-sm text-slate-600">${escapeHtml(formatTime(record.receivedAt || record.timestamp))}</td>
-                    <td class="px-4 py-4 text-sm text-slate-700">${escapeHtml(formatDuration(record.durationSeconds))}</td>
+            const sorted = [...filtered].sort((a, b) => {
+                const aActive = (a.status === 'accepted' && !a.endedAt) ? 0 : 1;
+                const bActive = (b.status === 'accepted' && !b.endedAt) ? 0 : 1;
+                if (aActive !== bActive) return aActive - bActive;
+
+                const aTime = new Date(a.receivedAt || a.timestamp || 0).getTime();
+                const bTime = new Date(b.receivedAt || b.timestamp || 0).getTime();
+                return bTime - aTime;
+            });
+
+            tbody.innerHTML = sorted.map(record => `
+                <tr class="cursor-pointer transition hover:bg-blue-50/50">
+                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(record.receivedAt || record.timestamp))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(record.receivedAt || record.timestamp))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.durationSeconds))}</td>
                 </tr>
             `).join('');
         }
@@ -839,6 +933,11 @@
         function clearCallRecords() {
             localStorage.removeItem(STORAGE_KEY);
             renderCallRecords();
+        }
+
+        const callSearchInput = document.getElementById('callSearchInput');
+        if (callSearchInput) {
+            callSearchInput.addEventListener('input', renderCallRecords);
         }
 
         window.renderCallRecords = renderCallRecords;

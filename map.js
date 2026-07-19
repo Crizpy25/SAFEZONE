@@ -552,6 +552,7 @@ function openMapReportDetails(report) {
 }
 
 function openNotificationDetailsModal(report) {
+    console.log('[Notification] Opening modal for report:', report);
     const status = normalizeNotificationStatus(report.status);
     const type = getNotificationCategory(report.category);
     const deviceId = getReporterDeviceId(report);
@@ -559,6 +560,10 @@ function openNotificationDetailsModal(report) {
     const description = String(report.description || 'No description provided');
     const location = getNotificationLocation(report);
     const timestamp = formatNotificationTimestamp(report);
+
+    const rawDate = new Date(report.created_at || report.updated_at || report.timestamp || new Date());
+    const dateStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(rawDate);
+    const timeStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawDate);
 
     const modal = document.getElementById('notificationDetailsModal');
     const content = document.getElementById('notificationDetailsContent');
@@ -569,8 +574,18 @@ function openNotificationDetailsModal(report) {
         title.textContent = `${type} report - ${timestamp}`;
     }
 
+    const lat = Number(report.latitude || report.lat);
+    const lng = Number(report.longitude || report.long || report.longtitude);
+    const reporterName = report.reporter_name || report.reporterName || report.name || report.fullname || null;
+    const contactNumber = report.phone_number || report.contact_number || report.contactNumber || report.phone || null;
+
     const metaFields = Object.entries(report)
-        .filter(([key]) => !['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','deviceId','reporter_device_id','reporter_device'].includes(key))
+        .filter(([key, value]) => {
+            if (!value && value !== 0) return false;
+            const excluded = ['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','deviceId','reporter_device_id','reporter_device','reporter_name','reporterName','name','fullname','phone_number','contact_number','contactNumber','phone','location','address'];
+            if (excluded.includes(key)) return false;
+            return true;
+        })
         .map(([key, value]) => `
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">${escapeMapHtml(key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()))}</dt>
@@ -611,23 +626,60 @@ function openNotificationDetailsModal(report) {
         </div>
         <dl class="mt-5 grid gap-3 sm:grid-cols-2">
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Report ID</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(String(report.id || '-'))}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Status</dt>
                 <dd class="mt-1 break-words text-sm text-slate-800"><span class="rounded-full px-2 py-0.5 text-xs font-semibold ${getNotificationBadgeClass(status)}">${escapeMapHtml(status)}</span></dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Date</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(dateStr)}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Time</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(timeStr)}</dd>
+            </div>
+            ${reporterName ? `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Reporter's Name</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(reporterName)}</dd>
+            </div>
+            ` : ''}
+            ${contactNumber ? `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Contact Number</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(contactNumber)}</dd>
+            </div>
+            ` : ''}
+            ${Number.isFinite(lat) ? `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Latitude</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(String(lat.toFixed(5)))}</dd>
+            </div>
+            ` : ''}
+            ${Number.isFinite(lng) ? `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Longitude</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(String(lng.toFixed(5)))}</dd>
+            </div>
+            ` : ''}
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Location</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(location)}</dd>
             </div>
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Reporter Device ID</dt>
                 <dd class="mt-1 break-words text-sm text-slate-800">${deviceId ? escapeMapHtml(deviceId) : '-'}</dd>
             </div>
-            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Location</dt>
-                <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(location)}</dd>
-            </div>
             ${metaFields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
-        </dl>
+         </dl>
     `;
 
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    console.log('[Notification] Modal shown. Classes:', modal.className);
 }
 
 function closeNotificationDetailsModal() {
@@ -702,6 +754,12 @@ function renderNotificationPanel() {
     }
 
     items.sort((a, b) => {
+        const aStatus = normalizeNotificationStatus(a.report?.status);
+        const bStatus = normalizeNotificationStatus(b.report?.status);
+        const aActive = aStatus === 'Active' ? 0 : 1;
+        const bActive = bStatus === 'Active' ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+
         const aTime = new Date(a.report?.created_at || a.report?.updated_at || 0).getTime();
         const bTime = new Date(b.report?.created_at || b.report?.updated_at || 0).getTime();
         return bTime - aTime;
@@ -724,7 +782,7 @@ function renderNotificationPanel() {
         const description = String(report.description || 'No description provided').slice(0, 140);
         return `
             <button type="button"
-                onclick="selectNotification('${report.id}')"
+                onclick="openNotificationDetails('${report.id}')"
                 class="notification-card w-full rounded-xl border ${isSelected ? 'selected' : 'border-slate-200 bg-white/95'} p-3 text-left shadow-sm hover:border-blue-300 hover:shadow-md">
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex items-start gap-2">
@@ -796,6 +854,19 @@ function selectNotification(id) {
 
 function panToIncident(id) {
     selectNotification(id);
+}
+
+function openNotificationDetails(id) {
+    selectedNotificationId = String(id);
+    renderNotificationPanel();
+
+    const report = window.allIncidents?.find(n => String(n.id) === String(id));
+    if (!report) {
+        console.warn('[Notification] Report not found for id:', id, 'allIncidents:', window.allIncidents);
+        return;
+    }
+
+    openNotificationDetailsModal(report);
 }
 
 async function loadReports() {
@@ -1099,6 +1170,13 @@ setInterval(() => {
 window.initializeMap = initializeMap;
 window.centerMap = centerMap;
 window.selectNotification = selectNotification;
+window.openNotificationDetails = openNotificationDetails;
+window.closeNotificationDetailsModal = closeNotificationDetailsModal;
+window.refreshMapSize = function refreshMapSize() {
+    if (map && typeof map.invalidateSize === 'function') {
+        map.invalidateSize();
+    }
+};
 
 function tryInitializeMap() {
     const mapEl = document.getElementById('map');
