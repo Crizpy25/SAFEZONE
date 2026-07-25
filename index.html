@@ -72,6 +72,13 @@
             </li>
         </ul>
 
+        <div class="px-4 pb-3">
+            <button onclick="openCreateReportModal()" class="flex w-full items-center justify-center gap-2 bg-blue-600 text-white font-bold hover:bg-blue-500 rounded-lg px-4 py-3">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Create Report
+            </button>
+        </div>
+
         <div class="mt-auto border-t border-white/30 p-4">
             <div class="bg-blue-800/50 rounded-xl p-4 text-center">
                 <div id="idleState">
@@ -255,6 +262,54 @@
         </div>
     </div>
 
+    <div id="createReportModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9999] p-4" onclick="closeCreateReportModal()">
+        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">New incident</p>
+                    <h2 class="text-xl font-bold text-slate-900">Create Report</h2>
+                </div>
+                <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
+            </div>
+            <form id="createReportForm" class="p-5 space-y-5">
+                <div>
+                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Incident Type <span class="text-red-500">*</span></p>
+                    <div class="flex flex-wrap gap-2" id="incidentTypeButtons">
+                        <button type="button" data-type="Police" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Police</button>
+                        <button type="button" data-type="Fire" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Fire</button>
+                        <button type="button" data-type="Medical" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Medical</button>
+                        <button type="button" data-type="Other" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Other</button>
+                    </div>
+                    <p id="incidentTypeError" class="mt-1 hidden text-xs text-red-500">Please select an incident type.</p>
+                </div>
+                <div>
+                    <label for="reportDescription" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Description <span class="text-red-500">*</span></label>
+                    <textarea id="reportDescription" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Describe the incident..."></textarea>
+                    <p id="descriptionError" class="mt-1 hidden text-xs text-red-500">Please provide a description.</p>
+                </div>
+                <div>
+                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Location <span class="text-red-500">*</span></p>
+                    <p class="text-xs text-slate-400 mb-2">Click on the map to select the incident location.</p>
+                    <div id="createReportMap" class="h-80 w-full rounded-lg border border-slate-200 bg-slate-100"></div>
+                    <p id="selectedLocationDisplay" class="mt-2 text-xs text-slate-600">No location selected yet.</p>
+                    <p id="locationError" class="mt-1 hidden text-xs text-red-500">Please select a location on the map.</p>
+                    <p id="boundaryError" class="mt-1 hidden text-xs text-red-500">The selected location is outside Iloilo City. Please choose a location within Iloilo City to submit this report.</p>
+                </div>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="reportDateTime" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date &amp; Time</label>
+                        <input id="reportDateTime" type="text" readonly class="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500">
+                    </div>
+                </div>
+                <p id="createReportError" class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"></p>
+                <div class="flex justify-end gap-3 border-t border-slate-200 pt-4">
+                    <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button>
+                    <button type="submit" id="submitReportBtn" class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500">Submit Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
         <div id="view-calls" class="hidden">
             <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
@@ -265,22 +320,6 @@
                     <p id="callRecordCount" class="text-sm font-medium text-slate-500">Loading calls...</p>
                 </div>
                 <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div class="flex flex-col gap-1">
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Search</span>
-                            <label class="relative block w-full lg:max-w-sm" for="callSearchInput">
-                                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
-                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                        <path d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                    </svg>
-                                </span>
-                                <input id="callSearchInput" type="search" placeholder="Search calls..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
-                            </label>
-                        </div>
-                        <button onclick="clearCallRecords()" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition hover:bg-slate-50 self-end">
-                            Clear Records
-                        </button>
-                    </div>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
                             <thead class="bg-slate-100/80">
@@ -392,6 +431,10 @@
                 }
             } else if (view === 'analytics') {
                 loadAnalytics();
+            }
+
+            if (typeof window.closeCreateReportModal === 'function') {
+                window.closeCreateReportModal();
             }
 
             if (window.location.hash !== '#' + view) window.history.replaceState(null, '', '#' + view);
@@ -837,6 +880,193 @@
     </script>
 
     <script>
+        let _createReportMap = null;
+        let _createReportTempMarker = null;
+        let _selectedIncidentType = null;
+        let _selectedLatLng = null;
+
+        function _formatDateTimeLabel(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '';
+            return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+        }
+
+        function openCreateReportModal() {
+            _selectedIncidentType = null;
+            _selectedLatLng = null;
+
+            document.getElementById('createReportForm').reset();
+            document.getElementById('selectedLocationDisplay').textContent = 'No location selected yet.';
+            document.getElementById('selectedLocationDisplay').className = 'mt-2 text-xs text-slate-600';
+            document.getElementById('incidentTypeError').classList.add('hidden');
+            document.getElementById('descriptionError').classList.add('hidden');
+            document.getElementById('locationError').classList.add('hidden');
+            document.getElementById('boundaryError').classList.add('hidden');
+            document.getElementById('createReportError').classList.add('hidden');
+
+            document.querySelectorAll('.incident-type-btn').forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                b.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
+            });
+
+            const now = new Date();
+            document.getElementById('reportDateTime').value = _formatDateTimeLabel(now.toISOString());
+
+            const modal = document.getElementById('createReportModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+
+            setTimeout(() => {
+                try {
+                    if (_createReportMap) { _createReportMap.remove(); _createReportMap = null; }
+                    const mapEl = document.getElementById('createReportMap');
+                    if (!mapEl || !window.L) return;
+                    _createReportMap = L.map('createReportMap', {
+                        center: [10.7202, 122.5525],
+                        zoom: 14,
+                        zoomControl: false,
+                        dragging: true,
+                        scrollWheelZoom: true
+                    });
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(_createReportMap);
+                    _createReportMap.on('click', function (e) {
+                        const { lat, lng } = e.latlng;
+                        _selectedLatLng = { lat, lng };
+                        document.getElementById('selectedLocationDisplay').textContent = `Selected: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+                        document.getElementById('selectedLocationDisplay').className = 'mt-2 text-xs font-semibold text-blue-700';
+                        document.getElementById('locationError').classList.add('hidden');
+                        document.getElementById('boundaryError').classList.add('hidden');
+                        if (_createReportTempMarker) { _createReportMap.removeLayer(_createReportTempMarker); }
+                        _createReportTempMarker = L.marker([lat, lng]).addTo(_createReportMap);
+                    });
+                    setTimeout(() => { try { _createReportMap.invalidateSize(); } catch (e) { /* ignore */ } }, 50);
+                    setTimeout(() => { try { _createReportMap.invalidateSize(); } catch (e) { /* ignore */ } }, 250);
+                } catch (e) {
+                    console.error('[CreateReport] Failed to init modal map:', e);
+                }
+            }, 60);
+        }
+
+        function closeCreateReportModal() {
+            const modal = document.getElementById('createReportModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+            if (_createReportTempMarker && _createReportMap) { try { _createReportMap.removeLayer(_createReportTempMarker); } catch (e) { /* ignore */ } _createReportTempMarker = null; }
+            if (_createReportMap) { try { _createReportMap.remove(); } catch (e) { /* ignore */ } _createReportMap = null; }
+        }
+
+        function selectIncidentType(type) {
+            _selectedIncidentType = type;
+            document.querySelectorAll('.incident-type-btn').forEach(btn => {
+                if (btn.dataset.type === type) {
+                    btn.classList.remove('bg-white', 'text-slate-700', 'border-slate-300');
+                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    btn.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
+                }
+            });
+            document.getElementById('incidentTypeError').classList.add('hidden');
+        }
+
+        async function handleCreateReportSubmit(event) {
+            event.preventDefault();
+            const errorEl = document.getElementById('createReportError');
+            errorEl.classList.add('hidden');
+
+            if (!_selectedIncidentType) { document.getElementById('incidentTypeError').classList.remove('hidden'); }
+            if (!_selectedLatLng) { document.getElementById('locationError').classList.remove('hidden'); }
+            const description = (document.getElementById('reportDescription').value || '').trim();
+            if (!description) { document.getElementById('descriptionError').classList.remove('hidden'); }
+
+            if (!_selectedIncidentType || !_selectedLatLng || !description) {
+                errorEl.textContent = 'Please fill in all required fields and select a location on the map.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const boundaryErrorEl = document.getElementById('boundaryError');
+            if (typeof isPointInPolygon === 'function' && !isPointInPolygon(_selectedLatLng.lat, _selectedLatLng.lng)) {
+                boundaryErrorEl.classList.remove('hidden');
+                return;
+            } else {
+                boundaryErrorEl.classList.add('hidden');
+            }
+
+            const submitBtn = document.getElementById('submitReportBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            const now = new Date();
+            const record = {
+                category: _selectedIncidentType,
+                description: description,
+                latitude: Number(_selectedLatLng.lat),
+                longitude: Number(_selectedLatLng.lng),
+                created_at: now.toISOString(),
+                status: 'active'
+            };
+
+            try {
+                const { data, error } = await window.supabaseClient
+                    .from('incidents')
+                    .insert([record])
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                closeCreateReportModal();
+
+                if (map) {
+                    map.flyTo([record.latitude, record.longitude], 15, { animate: true });
+                }
+                showToast('Report submitted successfully.', 'success');
+            } catch (err) {
+                console.error('[CreateReport] Submit error:', err);
+                errorEl.textContent = err.message || 'Failed to submit report. Please try again.';
+                errorEl.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Report';
+            }
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-6 right-6 z-[10000] rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-2xl transition-all ${type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, 2800);
+            setTimeout(() => toast.remove(), 3200);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('createReportForm')?.addEventListener('submit', handleCreateReportSubmit);
+            document.getElementById('createReportModal')?.addEventListener('click', function (e) {
+                if (e.target === this) closeCreateReportModal();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    const modal = document.getElementById('createReportModal');
+                    if (modal && !modal.classList.contains('hidden')) closeCreateReportModal();
+                }
+            });
+
+            document.querySelectorAll('.incident-type-btn').forEach(btn => {
+                btn.addEventListener('click', () => selectIncidentType(btn.dataset.type));
+            });
+
+            window.openCreateReportModal = openCreateReportModal;
+            window.closeCreateReportModal = closeCreateReportModal;
+            window.handleCreateReportSubmit = handleCreateReportSubmit;
+        });
+    </script>
+
+    <script>
         const STORAGE_KEY = 'safezone_call_records';
 
         function getCallRecords() {
@@ -889,19 +1119,7 @@
             const tbody = document.getElementById('callRecordsBody');
             if (!tbody) return;
 
-            const searchTerm = String(document.getElementById('callSearchInput')?.value || '').toLowerCase().trim();
-            const filtered = searchTerm
-                ? records.filter(record => {
-                    const haystack = [
-                        formatDate(record.receivedAt || record.timestamp),
-                        formatTime(record.receivedAt || record.timestamp),
-                        formatDuration(record.durationSeconds)
-                    ].join(' ').toLowerCase();
-                    return haystack.includes(searchTerm);
-                })
-                : records;
-
-            if (!filtered.length) {
+            if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="3" class="px-4 py-8 text-center text-slate-400">No call records yet.</td>
@@ -910,7 +1128,7 @@
                 return;
             }
 
-            const sorted = [...filtered].sort((a, b) => {
+            const sorted = [...records].sort((a, b) => {
                 const aActive = (a.status === 'accepted' && !a.endedAt) ? 0 : 1;
                 const bActive = (b.status === 'accepted' && !b.endedAt) ? 0 : 1;
                 if (aActive !== bActive) return aActive - bActive;
@@ -929,18 +1147,7 @@
             `).join('');
         }
 
-        function clearCallRecords() {
-            localStorage.removeItem(STORAGE_KEY);
-            renderCallRecords();
-        }
-
-        const callSearchInput = document.getElementById('callSearchInput');
-        if (callSearchInput) {
-            callSearchInput.addEventListener('input', renderCallRecords);
-        }
-
         window.renderCallRecords = renderCallRecords;
-        window.clearCallRecords = clearCallRecords;
     </script>
 
     <script src="webrtc.js"></script>

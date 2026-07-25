@@ -78,9 +78,9 @@ function initializeMap() {
 
     const policeIcon = L.icon({
         iconUrl: 'images/police.png',
-        iconSize: [30, 30],
-        iconAnchor: [17, 35],
-        popupAnchor: [0, -35]
+        iconSize: [36, 36],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40]
     });
     const fireIcons = L.icon({
         iconUrl: 'images/fire.png',
@@ -109,14 +109,13 @@ function initializeMap() {
     const stations = [
         { name: 'PS1 City Proper', lat: 10.701501994092405, lng: 122.56369039944839, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS2 La Paz', lat: 10.70552222109631, lng: 122.56549995693831, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS3 Jaro', lat: 10.71560226623802, lng: 122.56266469623272, icon: policeIcon, layer: window.policeLayer },
-        { name: 'Molo Police Station', lat: 10.698346304433658, lng: 122.55105476464729, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS3 Jaro ', lat: 10.735918109716387, lng: 122.55998972270376, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS4 Molo', lat: 10.698346304433658, lng: 122.55105476464729, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS5 Mandurriao', lat: 10.71683400704982, lng: 122.53648059623264, icon: policeIcon, layer: window.policeLayer },
-        { name: 'Arevalo Police Station', lat: 10.68890021276814, lng: 122.51886825833218, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS7 Lapuz', lat: 10.693878433584727, lng: 122.55874469935698, icon: policeIcon, layer: window.policeLayer },
-        { name: 'Sambag Police Assistant', lat: 10.742333401995415, lng: 122.5409438842518, icon: policeIcon, layer: window.policeLayer },
-        { name: 'Ungka Police Station', lat: 10.747512542219782, lng: 122.54008363707585, icon: policeIcon, layer: window.policeLayer },
-        { name: 'ICPO Police Station 9', lat: 10.7272054892569, lng: 122.56710895228002, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS6 Arevalo', lat: 10.68890021276814, lng: 122.51886825833218, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS7 City Proper', lat: 10.693697669664308, lng: 122.5578915097894, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS8  Brgy. Obrero', lat: 10.696296224219786, lng: 122.58505698638052, icon: policeIcon, layer: window.policeLayer },
+        { name: 'ICPO Police Station 9', lat: 10.726572389429572, lng: 122.56519373620795, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICARE Fire station', lat: 10.705088291583916, lng: 122.55490712638891, icon: fireIcons, layer: window.fireLayer },
         { name: 'Alta Tierra Fire Sub-station', lat: 10.739664436279549, lng: 122.56651531888511, icon: fireIcons, layer: window.fireLayer },
@@ -257,6 +256,41 @@ function getNearestAgencies(category, lat, lng, limit = 3) {
         }))
         .sort((a, b) => a.distanceKm - b.distanceKm)
         .slice(0, limit);
+}
+
+const POLICE_HOTLINES = Object.freeze({
+    'PS1 City Proper': '0998-598-6242',
+    'PS2 La Paz': '0998-598-6244',
+    'PS3 Jaro ': '0998-598-6246',
+    'PS4 Molo': '0998-598-6248',
+    'PS5 Mandurriao': '0998-598-6250',
+    'PS6 Arevalo': '0998-598-6252',
+    'PS7 City Proper': '0947-996-6568',
+    'PS8  Brgy. Obrero': '0908-689-6098',
+    'ICPO Police Station 9': '0908-322-8457',
+    'ICPO Police Station 10': '0908-308-0940'
+});
+
+function getRecommendedPoliceStation(lat, lng) {
+    const results = getNearestAgencies('Police', lat, lng, 1);
+    if (!results.length) return null;
+    const nearest = results[0];
+    return {
+        name: nearest.name,
+        hotline: POLICE_HOTLINES[nearest.name] || null,
+        distanceKm: nearest.distanceKm
+    };
+}
+
+function getRecommendedHospital(lat, lng) {
+    const results = getNearestAgencies('Medic', lat, lng, 1);
+    if (!results.length) return null;
+    const nearest = results[0];
+    return {
+        name: nearest.name,
+        hotline: '09190661554',
+        distanceKm: nearest.distanceKm
+    };
 }
 
 function closeCategoryReports() {
@@ -903,17 +937,31 @@ async function loadReports() {
 function getIncidentPopupHtml(report, id) {
     const lat = Number(report.latitude || report.lat);
     const lng = Number(report.longitude || report.long || report.longtitude);
-    const nearest = (Number.isFinite(lat) && Number.isFinite(lng))
-        ? getNearestAgencies(report.category, lat, lng)
-        : [];
-    const nearestHtml = nearest.length
-        ? nearest.slice(0, 1).map(a => `
-            <div style="margin-top:6px;">
-              <div style="font-weight:700;color:#0f172a;">Nearest responder: ${escapeMapHtml(a.name)}</div>
-              <div style="font-size:12px;color:#64748b;">${escapeMapHtml(a.type)} — ${escapeMapHtml(formatDistance(a.distanceKm))}</div>
+    const category = String(report.category || '').toLowerCase().trim();
+    const isPolice = category.includes('police');
+    const isMedic = category.includes('medic') || category.includes('medical') || category.includes('hospital');
+    const recommended = ((isPolice || isMedic) && Number.isFinite(lat) && Number.isFinite(lng))
+        ? isPolice
+            ? getRecommendedPoliceStation(lat, lng)
+            : getRecommendedHospital(lat, lng)
+        : null;
+    const recommendedHtml = recommended ? `
+        <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:8px;">
+            <div style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
+                ${isPolice ? '📞 Recommended Contact' : '🏥 Recommended Contact'}
             </div>
-          `).join('')
-        : `<span style="color:#94a3b8;">No nearby responder found</span>`;
+            <div style="font-size:13px; color:#334155; line-height:1.5;">
+                <div style="font-weight:700; color:#0f172a;">${escapeMapHtml(recommended.name)}</div>
+                <div style="font-size:12px; color:#64748b; margin-top:2px;">📏 ${escapeMapHtml(formatDistance(recommended.distanceKm))}</div>
+                ${recommended.hotline ? `
+                    <a href="tel:${escapeMapHtml(recommended.hotline)}" 
+                       style="display:inline-block; margin-top:6px; background:#dc2626; color:white; text-decoration:none; padding:6px 10px; border-radius:4px; font-weight:700; font-size:12px;">
+                        📞 ${escapeMapHtml(recommended.hotline)}
+                    </a>
+                ` : ''}
+            </div>
+        </div>
+    ` : '';
 
     return `
         <div style="min-width:220px; max-width:260px;">
@@ -934,9 +982,7 @@ function getIncidentPopupHtml(report, id) {
                      onclick="window.openLightbox('${report.image_url.replace(/'/g, "\\'")}')"
                      onerror="this.style.display='none'"/>
             ` : ''}
-            <div id="nearest-responder-${id}" style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px; font-size:12px; color:#64748b;">
-                ${nearestHtml}
-            </div>
+            ${recommendedHtml}
             <div style="margin-top:10px; display:flex; gap:8px;">
                 <button onclick="markAsResolved('${id}')"
                     style="flex:1;background:#28a745;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
@@ -1028,20 +1074,6 @@ function addIncidentMarker(report) {
 
     marker.on('popupclose', function () {
         if (popupPinned) marker.openPopup();
-    });
-
-    marker.on('popupopen', function () {
-        const el = document.getElementById(`nearest-responder-${id}`);
-        if (!el) return;
-        const nearest = marker._nearest || [];
-        if (nearest.length) {
-            el.innerHTML = `
-                <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">Nearest responder: ${escapeMapHtml(nearest[0].name)}</div>
-                <div style="font-size:11px; color:#64748b;">${escapeMapHtml(nearest[0].type)} — ${escapeMapHtml(formatDistance(nearest[0].distanceKm))}</div>
-            `;
-        } else {
-            el.innerHTML = `<span style="color:#94a3b8;">No nearby responder found</span>`;
-        }
     });
 
     return true;
