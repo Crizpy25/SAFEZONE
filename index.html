@@ -205,6 +205,15 @@
                                 </select>
                             </div>
                             <div class="flex flex-col gap-1">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</span>
+                                <select id="statusFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                                    <option value="all">All</option>
+                                    <option value="Active">Active</option>
+                                    <option value="Resolved">Resolved</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col gap-1">
                                 <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Categories</span>
                                 <select id="typeFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
                                     <option value="all">All</option>
@@ -322,13 +331,14 @@
                 <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
-                            <thead class="bg-slate-100/80">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</th>
-                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
-                                    <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Duration</th>
-                                </tr>
-                            </thead>
+                        <thead class="bg-slate-100/80">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Duration</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Handled By</th>
+                            </tr>
+                        </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
                                 <tr>
                                     <td colspan="3" class="px-4 py-8 text-center text-slate-400">Loading...</td>
@@ -421,7 +431,7 @@
                     console.error('[Reports] window.loadReportRecords is not a function');
                 }
             } else if (view === 'calls') {
-                renderCallRecords();
+                renderCallRecords().catch(() => {});
             } else if (view === 'dashboard') {
                 if (typeof window.initializeMap === 'function' && !window._mapInitialized) {
                     window.initializeMap();
@@ -504,7 +514,9 @@
         window.addEventListener('hashchange', () => switchView(window.location.hash.slice(1) || 'dashboard'));
         window.addEventListener('DOMContentLoaded', () => switchView(window.location.hash.slice(1) || 'dashboard'));
 
-        window.addEventListener('call-records-updated', renderCallRecords);
+        window.addEventListener('call-records-updated', () => {
+            renderCallRecords().catch(() => {});
+        });
     </script>
 
     <audio id="remoteAudio" autoplay playsinline></audio>
@@ -581,7 +593,7 @@
                     </div>
                 </div>
                 <dl class="mt-5 grid gap-3 sm:grid-cols-2">
-                    ${fields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
+                    ${fields || ''}
                 </dl>
             `;
             document.getElementById('detailsModal').classList.remove('hidden');
@@ -640,9 +652,20 @@
                 Active: 'bg-sky-100 text-sky-700',
                 Responding: 'bg-amber-100 text-amber-700',
                 Resolved: 'bg-emerald-100 text-emerald-700',
-                Cancelled: 'bg-rose-100 text-rose-700'
+                Cancelled: 'bg-rose-100 text-rose-700',
+                Assigned: 'bg-indigo-100 text-indigo-700'
             };
             return `<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[normalized] || styles.Active}">${normalized}</span>`;
+        }
+
+        function getHandledByBadge(row) {
+            if (row.handled_by) {
+                return `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">👤 ${escapeHtml(row.handled_by)}</span>`;
+            }
+            if (row.status === 'resolved' || row.status === 'cancelled') {
+                return `<span class="text-[10px] text-slate-400">-</span>`;
+            }
+            return `<span class="text-[10px] text-slate-500">Not yet handled</span>`;
         }
 
         function sortReportsNewestFirst(reports) {
@@ -710,21 +733,24 @@
         function getFilteredReports() {
             const dateFilter = document.getElementById('dateFilter').value;
             const typeFilter = document.getElementById('typeFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
             const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
 
             return sortReportsNewestFirst(allReports.filter(row => {
                 const type = normalizeReportType(row.category);
                 const date = getReportDate(row);
+                const status = normalizeReportStatus(row.status);
                 const haystack = [
                     formatDate(date),
                     formatTime(date),
                     type,
-                    normalizeReportStatus(row.status),
+                    status,
                     row.description
                 ].join(' ').toLowerCase();
 
                 return matchesDateFilter(date, dateFilter)
                     && (typeFilter === 'all' || type === typeFilter)
+                    && (statusFilter === 'all' || status === statusFilter)
                     && (!searchTerm || haystack.includes(searchTerm));
             }));
         }
@@ -739,10 +765,12 @@
             document.getElementById('recordCount').textContent = countLabel;
 
             if (reports.length === 0) {
+                const statusFilter = document.getElementById('statusFilter').value;
+                const statusLabel = statusFilter === 'all' ? '' : ` for the selected status`;
                 document.getElementById('output').innerHTML = `
                     <div class="p-10 text-center">
-                        <p class="text-sm font-semibold text-slate-700">No reports found</p>
-                        <p class="mt-1 text-sm text-slate-400">Try adjusting the date, type, or search filter.</p>
+                        <p class="text-sm font-semibold text-slate-700">No reports found${statusLabel}</p>
+                        <p class="mt-1 text-sm text-slate-400">Try adjusting the date, type, status, or search filter.</p>
                     </div>
                 `;
                 return;
@@ -758,6 +786,7 @@
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Type</th>
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Description</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Handled By</th>
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Image</th>
                             </tr>
                         </thead>
@@ -769,6 +798,7 @@
                                 const description = row.description || 'No description provided';
                                 const reportIndex = allReports.indexOf(row);
                                 const statusBadge = getReportStatusBadge(row.status);
+                                const handledByBadge = getHandledByBadge(row);
 
                                 return `
                                     <tr class="cursor-pointer transition hover:bg-blue-50/50" data-report-index="${reportIndex}" tabindex="0" aria-label="Open report details">
@@ -779,6 +809,7 @@
                                         <td class="max-w-[200px] px-3 py-2 text-xs text-slate-600">
                                             <p class="line-clamp-1" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
                                         </td>
+                                        <td class="whitespace-nowrap px-3 py-2 text-xs">${handledByBadge}</td>
                                         <td class="whitespace-nowrap px-3 py-2 text-xs">
                                             ${imgUrl ? `
                                                 <button type="button" class="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-slate-100 outline-none ring-blue-500 transition hover:scale-[1.05] focus:ring-2" data-preview-src="${escapeHtml(imgUrl)}" aria-label="Preview attached report image">
@@ -838,6 +869,7 @@
 
         document.getElementById('dateFilter').addEventListener('change', renderReports);
         document.getElementById('typeFilter').addEventListener('change', renderReports);
+        document.getElementById('statusFilter').addEventListener('change', renderReports);
         document.getElementById('searchInput').addEventListener('input', renderReports);
         document.getElementById('output').addEventListener('click', event => {
             const previewButton = event.target.closest('[data-preview-src]');
@@ -1067,18 +1099,26 @@
     </script>
 
     <script>
-        const STORAGE_KEY = 'safezone_call_records';
+        const EMERGENCY_ALERTS_TABLE = 'emergency_alerts';
 
-        function getCallRecords() {
+        async function getCallRecords() {
+            if (!window.supabaseClient) return [];
             try {
-                return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-            } catch (e) {
+                const { data, error } = await window.supabaseClient
+                    .from(EMERGENCY_ALERTS_TABLE)
+                    .select('*')
+                    .order('received_at', { ascending: false })
+                    .limit(200);
+
+                if (error) {
+                    console.error('Failed to fetch call records from Supabase:', error);
+                    return [];
+                }
+                return data || [];
+            } catch (err) {
+                console.error('Exception fetching call records from Supabase:', err);
                 return [];
             }
-        }
-
-        function saveCallRecords(records) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
         }
 
         function formatDate(value) {
@@ -1111,8 +1151,8 @@
                 .replace(/'/g, '&#039;');
         }
 
-        function renderCallRecords() {
-            const records = getCallRecords();
+        async function renderCallRecords() {
+            const records = await getCallRecords();
             const countEl = document.getElementById('callRecordCount');
             if (countEl) countEl.textContent = `${records.length} call${records.length === 1 ? '' : 's'}`;
 
@@ -1129,20 +1169,21 @@
             }
 
             const sorted = [...records].sort((a, b) => {
-                const aActive = (a.status === 'accepted' && !a.endedAt) ? 0 : 1;
-                const bActive = (b.status === 'accepted' && !b.endedAt) ? 0 : 1;
+                const aActive = (a.status === 'accepted' && !a.ended_at) ? 0 : 1;
+                const bActive = (b.status === 'accepted' && !b.ended_at) ? 0 : 1;
                 if (aActive !== bActive) return aActive - bActive;
 
-                const aTime = new Date(a.receivedAt || a.timestamp || 0).getTime();
-                const bTime = new Date(b.receivedAt || b.timestamp || 0).getTime();
+                const aTime = new Date(a.received_at || a.timestamp || 0).getTime();
+                const bTime = new Date(b.received_at || b.timestamp || 0).getTime();
                 return bTime - aTime;
             });
 
             tbody.innerHTML = sorted.map(record => `
                 <tr class="cursor-pointer transition hover:bg-blue-50/50">
-                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(record.receivedAt || record.timestamp))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(record.receivedAt || record.timestamp))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.durationSeconds))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(record.received_at || record.timestamp))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(record.received_at || record.timestamp))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.duration_seconds))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(record.handled_by || '-')}</td>
                 </tr>
             `).join('');
         }

@@ -15,6 +15,53 @@ let selectedNotificationId = null;
 let notificationFilter = 'All';
 if (!window.allIncidents) window.allIncidents = [];
 
+function getCurrentAdminInfo() {
+    const adminId = sessionStorage.getItem('adminUserID');
+    const adminName = sessionStorage.getItem('adminFullName') || sessionStorage.getItem('adminUser') || 'Admin';
+    return adminId ? { id: adminId, name: adminName } : null;
+}
+
+async function claimReport(reportId) {
+    const adminId = sessionStorage.getItem('adminUserID');
+    if (!adminId || !window.supabaseClient) return false;
+    try {
+        const { data: adminData, error: adminError } = await window.supabaseClient
+            .from('admins')
+            .select('fullname')
+            .eq('id', adminId)
+            .single();
+
+        const adminName = adminData?.fullname || null;
+
+            const { data, error } = await window.supabaseClient
+                .from('incidents')
+                .update({
+                    handled_by: adminName,
+                    status: 'assigned'
+                })
+                .eq('id', reportId)
+                .eq('status', 'active')
+                .select();
+
+        return !error && data && data.length > 0;
+    } catch (e) {
+        console.error('Failed to claim report:', e);
+        return false;
+    }
+}
+
+async function acceptReport(reportId) {
+    const claimed = await claimReport(reportId);
+    if (!claimed) {
+        alert('This incident is already being handled by another administrator.');
+        return false;
+    }
+    await loadReports();
+    renderNotificationPanel();
+    updateActiveCounters();
+    return true;
+}
+
 function isPointInPolygon(lat, lng) {
     const ptLat = Number(lat);
     const ptLng = Number(lng);
@@ -109,24 +156,23 @@ function initializeMap() {
     const stations = [
         { name: 'PS1 City Proper', lat: 10.701501994092405, lng: 122.56369039944839, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS2 La Paz', lat: 10.70552222109631, lng: 122.56549995693831, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS3 Jaro ', lat: 10.735918109716387, lng: 122.55998972270376, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS3 Jaro', lat: 10.735918109716387, lng: 122.55998972270376, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS4 Molo', lat: 10.698346304433658, lng: 122.55105476464729, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS5 Mandurriao', lat: 10.71683400704982, lng: 122.53648059623264, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS6 Arevalo', lat: 10.68890021276814, lng: 122.51886825833218, icon: policeIcon, layer: window.policeLayer },
         { name: 'PS7 City Proper', lat: 10.693697669664308, lng: 122.5578915097894, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS8  Brgy. Obrero', lat: 10.696296224219786, lng: 122.58505698638052, icon: policeIcon, layer: window.policeLayer },
+        { name: 'PS8 Brgy. Obrero', lat: 10.696296224219786, lng: 122.58505698638052, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 9', lat: 10.726572389429572, lng: 122.56519373620795, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
         { name: 'ICARE Fire station', lat: 10.705088291583916, lng: 122.55490712638891, icon: fireIcons, layer: window.fireLayer },
         { name: 'Alta Tierra Fire Sub-station', lat: 10.739664436279549, lng: 122.56651531888511, icon: fireIcons, layer: window.fireLayer },
         { name: 'La Paz Fire Sub-Station', lat: 10.712651852092284, lng: 122.57295111469945, icon: fireIcons, layer: window.fireLayer },
         { name: 'Federation Iloilo Fire Station', lat: 10.697089988322267, lng: 122.56487023547012, icon: fireIcons, layer: window.fireLayer },
-        { name: 'BFP Iloilo', lat: 10.690705849929284, lng: 122.58144791800282, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Bo. Obrero Fire Sub-Station', lat: 10.702275407727985, lng: 122.59067301967075, icon: fireIcons, layer: window.fireLayer },
+        { name: 'BFP Iloilo', lat: 10.689280564358054, lng: 122.58153763103257, icon: fireIcons, layer: window.fireLayer },
+        { name: 'Bo. Obrero Fire Sub-Station', lat: 10.70033104702452, lng: 122.58796764071114, icon: fireIcons, layer: window.fireLayer },
         { name: 'Mandurriao Fire Sub-Station', lat: 10.719211489646474, lng: 122.53920666146492, icon: fireIcons, layer: window.fireLayer },
         { name: 'Arevalo Fire Sub-Station', lat: 10.688797426748417, lng: 122.51626529021178, icon: fireIcons, layer: window.fireLayer },
         { name: 'Sto. Niño Sur Fire Sub-Station', lat: 10.68223713089546, lng: 122.5099533777009, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Ungka Fire Sub-Station', lat: 10.74690941039231, lng: 122.53931659330536, icon: fireIcons, layer: window.fireLayer },
         { name: 'Old Molo Fire Station', lat: 10.697030999439814, lng: 122.5488881609591, icon: fireIcons, layer: window.fireLayer },
         { name: 'San Isidro Fire Sub-Station', lat: 10.736444550002995, lng: 122.5458557423291, icon: fireIcons, layer: window.fireLayer },
         { name: 'BFP JARO FIRE SUB STATION', lat: 10.725305477601013, lng: 122.55751243802833, icon: fireIcons, layer: window.fireLayer },
@@ -143,7 +189,10 @@ function initializeMap() {
 
     stations.forEach(s => {
         if (!isPointInPolygon(s.lat, s.lng)) return;
-        L.marker([s.lat, s.lng], { icon: s.icon }).addTo(s.layer).bindPopup(s.name);
+        const contactText = getStationContact(s.name) || 'Not Available';
+        const popupHtml = `<div style="font-size:13px; color:#0f172a; font-weight:700; margin-bottom:4px;">${escapeMapHtml(s.name)}</div>
+                           <div style="font-size:12px; color:#334155;">Contact Number: <span style="font-weight:700; color:#000000;">${escapeMapHtml(contactText)}</span></div>`;
+        L.marker([s.lat, s.lng], { icon: s.icon }).addTo(s.layer).bindPopup(popupHtml);
     });
 
     window.emergencyAgencyData = {
@@ -261,7 +310,7 @@ function getNearestAgencies(category, lat, lng, limit = 3) {
 const POLICE_HOTLINES = Object.freeze({
     'PS1 City Proper': '0998-598-6242',
     'PS2 La Paz': '0998-598-6244',
-    'PS3 Jaro ': '0998-598-6246',
+    'PS3 Jaro': '0998-598-6246',
     'PS4 Molo': '0998-598-6248',
     'PS5 Mandurriao': '0998-598-6250',
     'PS6 Arevalo': '0998-598-6252',
@@ -271,13 +320,56 @@ const POLICE_HOTLINES = Object.freeze({
     'ICPO Police Station 10': '0908-308-0940'
 });
 
+const HOSPITAL_CONTACT = '0919-066-1554';
+
+const FIRE_HOTLINES = Object.freeze({
+    'Arevalo Fire Sub-Station': '(033) 321 1096',
+    'Sto. Niño Sur Fire Sub-Station': '(033) 314 7631',
+    'BFP JARO FIRE SUB STATION': '(033) 500 0217',
+    'La Paz Fire Sub-Station': '(033) 320 6963',
+    'Mandurriao Fire Sub-Station': '(033) 321 0779',
+    'Old Molo Fire Station': '(033) 336 0639',
+    'Bo. Obrero Fire Sub-Station': '(033) 335 1965',
+    'San Isidro Fire Sub-Station': '(033) 330 1507',
+    'Alta Tierra Fire Sub-station': '(033) 323 5139',
+    'Federation Iloilo Fire Station': '(033) 337 9760',
+    'BFP Iloilo': '500-5026'
+});
+
+const stationContactMap = {};
+for (const [name, contact] of Object.entries(POLICE_HOTLINES)) {
+    stationContactMap[name.trim()] = contact;
+}
+for (const [name, contact] of Object.entries(FIRE_HOTLINES)) {
+    stationContactMap[name.trim()] = contact;
+}
+for (const [name, contact] of Object.entries({
+    'Western Visayas Medical Center (Public)': HOSPITAL_CONTACT,
+    'Iloilo Mission Hospital': HOSPITAL_CONTACT,
+    "St. Paul's Hospital Iloilo": HOSPITAL_CONTACT,
+    "Iloilo Doctors' Hospital": HOSPITAL_CONTACT,
+    'The Medical City Iloilo': HOSPITAL_CONTACT,
+    'West Visayas State University Medical Center': HOSPITAL_CONTACT,
+    'QualiMed Hospital Iloilo': HOSPITAL_CONTACT,
+    'Medicus Medical Center': HOSPITAL_CONTACT,
+    "AMOSUP Seamen's Hospital": HOSPITAL_CONTACT
+})) {
+    stationContactMap[name.trim()] = contact;
+}
+
+function getStationContact(stationName) {
+    const name = String(stationName || '').trim();
+    if (!name) return null;
+    return stationContactMap[name] || null;
+}
+
 function getRecommendedPoliceStation(lat, lng) {
     const results = getNearestAgencies('Police', lat, lng, 1);
     if (!results.length) return null;
     const nearest = results[0];
     return {
         name: nearest.name,
-        hotline: POLICE_HOTLINES[nearest.name] || null,
+        hotline: getStationContact(nearest.name),
         distanceKm: nearest.distanceKm
     };
 }
@@ -288,7 +380,7 @@ function getRecommendedHospital(lat, lng) {
     const nearest = results[0];
     return {
         name: nearest.name,
-        hotline: '09190661554',
+        hotline: getStationContact(nearest.name),
         distanceKm: nearest.distanceKm
     };
 }
@@ -478,6 +570,7 @@ function normalizeNotificationStatus(status) {
     if (value.includes('respond')) return 'Responding';
     if (value.includes('resolve')) return 'Resolved';
     if (value.includes('cancel')) return 'Cancelled';
+    if (value.includes('assign')) return 'Assigned';
     return 'Active';
 }
 
@@ -486,6 +579,26 @@ function formatDetailValue(value) {
         return JSON.stringify(value, null, 2);
     }
     return String(value);
+}
+
+function getHandledBySectionHtml(report) {
+    if (report.handled_by) {
+        return `
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Handled By</dt>
+                <dd class="mt-1 break-words text-sm text-slate-800">
+                     <div class="font-semibold text-slate-900">${escapeMapHtml(report.handled_by)}</div>
+                    <div class="text-xs text-slate-500">📌 ${escapeMapHtml(getHandlingStatus(report))}</div>
+                </dd>
+            </div>
+        `;
+    }
+
+    if (report.status === 'resolved' || report.status === 'cancelled') {
+        return '';
+    }
+
+    return '';
 }
 
 function getTypeBadge(type) {
@@ -577,7 +690,8 @@ function openMapReportDetails(report) {
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Location</dt>
                 <dd class="mt-1 break-words text-sm text-slate-800">${escapeMapHtml(location)}</dd>
             </div>
-            ${metaFields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
+            ${metaFields || ''}
+            ${getHandledBySectionHtml(report)}
         </dl>
     `;
 
@@ -616,7 +730,7 @@ function openNotificationDetailsModal(report) {
     const metaFields = Object.entries(report)
         .filter(([key, value]) => {
             if (!value && value !== 0) return false;
-            const excluded = ['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','deviceId','reporter_device_id','reporter_device','reporter_name','reporterName','name','fullname','phone_number','contact_number','contactNumber','phone','location','address'];
+            const excluded = ['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','reporter_device_id','reporter_name','phone_number','location','address'];
             if (excluded.includes(key)) return false;
             return true;
         })
@@ -707,16 +821,17 @@ function openNotificationDetailsModal(report) {
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Reporter Device ID</dt>
                 <dd class="mt-1 break-words text-sm text-slate-800">${deviceId ? escapeMapHtml(deviceId) : '-'}</dd>
             </div>
-            ${metaFields || '<div class="text-sm text-slate-400">No additional fields available.</div>'}
+            ${metaFields || ''}
+            ${getHandledBySectionHtml(report)}
          </dl>
-    `;
+     `;
 
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    console.log('[Notification] Modal shown. Classes:', modal.className);
-}
+     modal.classList.remove('hidden');
+     modal.classList.add('flex');
+     console.log('[Notification] Modal shown. Classes:', modal.className);
+ }
 
-function closeNotificationDetailsModal() {
+ function closeNotificationDetailsModal() {
     const modal = document.getElementById('notificationDetailsModal');
     if (modal) {
         modal.classList.add('hidden');
@@ -739,6 +854,7 @@ function getNotificationBadgeClass(status) {
     if (status === 'Resolved') return 'bg-emerald-100 text-emerald-700';
     if (status === 'Responding') return 'bg-amber-100 text-amber-700';
     if (status === 'Cancelled') return 'bg-rose-100 text-rose-700';
+    if (status === 'Assigned') return 'bg-indigo-100 text-indigo-700';
     return 'bg-sky-100 text-sky-700';
 }
 
@@ -836,6 +952,7 @@ function renderNotificationPanel() {
                     ${deviceId ? `<p><span class="font-semibold text-slate-700">Device ID:</span> ${escapeMapHtml(deviceId)}</p>` : ''}
                     <p><span class="font-semibold text-slate-700">Time:</span> ${escapeMapHtml(formatNotificationTimestamp(report))}</p>
                     <p><span class="font-semibold text-slate-700">Location:</span> ${escapeMapHtml(getNotificationLocation(report))}</p>
+                    ${report.handled_by ? `<p><span class="font-semibold text-slate-700">Handled By:</span> ${escapeMapHtml(report.handled_by)}</p>` : ''}
                 </div>
                 ${imageUrl ? `<img src="${escapeMapHtml(imageUrl)}" alt="Incident preview" class="mt-3 h-24 w-full rounded-lg object-cover border border-slate-200" onerror="this.style.display='none'">` : ''}
             </button>
@@ -934,6 +1051,35 @@ async function loadReports() {
     }
 }
 
+function getHandlingStatus(report) {
+    if (report.status === 'resolved') return 'Resolved';
+    if (report.status === 'cancelled') return 'Cancelled';
+    if (report.handled_by) return 'Assigned';
+    return 'Waiting for an available admin';
+}
+
+function getHandledByHtml(report, id) {
+    if (report.handled_by) {
+        return `
+            <div style="margin-top:8px; padding-top:8px; border-top:1px solid #e2e8f0;">
+                <div style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">
+                    👤 Handled By
+                </div>
+                <div style="font-size:13px; color:#334155; line-height:1.5;">
+                     <div style="font-weight:700; color:#0f172a;">${escapeMapHtml(report.handled_by)}</div>
+                    <div style="font-size:12px; color:#64748b;">📌 ${escapeMapHtml(getHandlingStatus(report))}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (report.status === 'resolved' || report.status === 'cancelled') {
+        return '';
+    }
+
+    return '';
+}
+
 function getIncidentPopupHtml(report, id) {
     const lat = Number(report.latitude || report.lat);
     const lng = Number(report.longitude || report.long || report.longtitude);
@@ -948,17 +1094,12 @@ function getIncidentPopupHtml(report, id) {
     const recommendedHtml = recommended ? `
         <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:8px;">
             <div style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
-                ${isPolice ? '📞 Recommended Contact' : '🏥 Recommended Contact'}
+                Suggested Station Contact
             </div>
             <div style="font-size:13px; color:#334155; line-height:1.5;">
                 <div style="font-weight:700; color:#0f172a;">${escapeMapHtml(recommended.name)}</div>
                 <div style="font-size:12px; color:#64748b; margin-top:2px;">📏 ${escapeMapHtml(formatDistance(recommended.distanceKm))}</div>
-                ${recommended.hotline ? `
-                    <a href="tel:${escapeMapHtml(recommended.hotline)}" 
-                       style="display:inline-block; margin-top:6px; background:#dc2626; color:white; text-decoration:none; padding:6px 10px; border-radius:4px; font-weight:700; font-size:12px;">
-                        📞 ${escapeMapHtml(recommended.hotline)}
-                    </a>
-                ` : ''}
+                <div style="font-size:12px; color:#64748b; margin-top:6px;">Contact Number: <span style="font-weight:700; color:#000000;">${escapeMapHtml(recommended.hotline || 'Not Available')}</span></div>
             </div>
         </div>
     ` : '';
@@ -983,6 +1124,7 @@ function getIncidentPopupHtml(report, id) {
                      onerror="this.style.display='none'"/>
             ` : ''}
             ${recommendedHtml}
+            ${getHandledByHtml(report, id)}
             <div style="margin-top:10px; display:flex; gap:8px;">
                 <button onclick="markAsResolved('${id}')"
                     style="flex:1;background:#28a745;color:white;border:none;padding:8px;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">
@@ -1023,19 +1165,19 @@ function addIncidentMarker(report) {
 
     marker.bindPopup(getIncidentPopupHtml(report, id), { maxWidth: 260, minWidth: 260, direction: 'auto', autoPan: false });
 
-    let popupPinned = false;
+    marker._popupPinned = false;
     let popupCloseTimer = null;
 
     marker.on('mouseover', function () {
         clearTimeout(popupCloseTimer);
-        if (!popupPinned) {
+        if (!marker._popupPinned) {
             map.dragging.disable();
             marker.openPopup();
         }
     });
 
     marker.on('mouseout', function () {
-        if (!popupPinned) {
+        if (!marker._popupPinned) {
             popupCloseTimer = setTimeout(() => {
                 marker.closePopup();
                 map.dragging.enable();
@@ -1046,8 +1188,8 @@ function addIncidentMarker(report) {
     marker.on('click', function (e) {
         L.DomEvent.stopPropagation(e);
         clearTimeout(popupCloseTimer);
-        popupPinned = !popupPinned;
-        if (popupPinned) {
+        marker._popupPinned = !marker._popupPinned;
+        if (marker._popupPinned) {
             map.dragging.enable();
             marker.openPopup();
             if (marker.isPopupOpen() && map.getZoom() < 14) {
@@ -1065,47 +1207,101 @@ function addIncidentMarker(report) {
     });
 
     map.on('click', function () {
-        if (popupPinned) {
-            popupPinned = false;
+        if (marker._popupPinned) {
+            marker._popupPinned = false;
             marker.closePopup();
             map.dragging.enable();
         }
     });
 
     marker.on('popupclose', function () {
-        if (popupPinned) marker.openPopup();
+        if (marker._popupPinned) marker.openPopup();
     });
 
     return true;
 }
 
 async function markAsResolved(incidentId) {
-    const id = typeof incidentId === 'number' ? incidentId : /^\d+$/.test(String(incidentId)) ? Number(incidentId) : incidentId;
-    const { data, error } = await window.supabaseClient
-        .from('incidents')
-        .update({ status: 'resolved' })
-        .eq('id', id)
-        .select();
+    const id = String(incidentId);
+    const adminId = sessionStorage.getItem('adminUserID');
+    let adminName = null;
+    try {
+        if (adminId && window.supabaseClient) {
+            const { data } = await window.supabaseClient
+                .from('admins')
+                .select('fullname')
+                .eq('id', adminId)
+                .single();
+            adminName = data?.fullname || null;
+        }
+    } catch (e) {
+        console.error('Failed to fetch admin info for markAsResolved:', e);
+    }
 
-    if (error) {
-        console.error("Database Error:", error.message);
+    const updateData = { status: 'resolved' };
+    if (adminName) {
+        updateData.handled_by = adminName;
+    }
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('incidents')
+            .update(updateData)
+            .eq('id', id);
+
+        if (error) {
+            console.error("Database Error:", error.message);
+            alert('Failed to update report status. Please try again.');
+            return;
+        }
+    } catch (e) {
+        console.error('Exception updating report:', e);
+        alert('Failed to update report status. Please try again.');
         return;
     }
+
     removeMarkerFromMap(id);
 }
 
 async function markAsCancelled(incidentId) {
-    const id = typeof incidentId === 'number' ? incidentId : /^\d+$/.test(String(incidentId)) ? Number(incidentId) : incidentId;
-    const { data, error } = await window.supabaseClient
-        .from('incidents')
-        .update({ status: 'cancelled' })
-        .eq('id', id)
-        .select();
+    const id = String(incidentId);
+    const adminId = sessionStorage.getItem('adminUserID');
+    let adminName = null;
+    try {
+        if (adminId && window.supabaseClient) {
+            const { data } = await window.supabaseClient
+                .from('admins')
+                .select('fullname')
+                .eq('id', adminId)
+                .single();
+            adminName = data?.fullname || null;
+        }
+    } catch (e) {
+        console.error('Failed to fetch admin info for markAsCancelled:', e);
+    }
 
-    if (error) {
-        console.error("Database Error:", error.message);
+    const updateData = { status: 'cancelled' };
+    if (adminName) {
+        updateData.handled_by = adminName;
+    }
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('incidents')
+            .update(updateData)
+            .eq('id', id);
+
+        if (error) {
+            console.error("Database Error:", error.message);
+            alert('Failed to update report status. Please try again.');
+            return;
+        }
+    } catch (e) {
+        console.error('Exception updating report:', e);
+        alert('Failed to update report status. Please try again.');
         return;
     }
+
     removeMarkerFromMap(id);
 }
 
@@ -1113,12 +1309,16 @@ function removeMarkerFromMap(id) {
     if (!window.incidentLayer) return;
     window.incidentLayer.eachLayer(layer => {
         if (String(layer.incidentId) === String(id)) {
+            layer._popupPinned = false;
+            try { layer.closePopup(); } catch (e) { /* ignore */ }
             window.incidentLayer.removeLayer(layer);
         }
     });
     renderNotificationPanel();
-    renderNotificationPanel();
     updateActiveCounters();
+    if (typeof window.refreshMapSize === 'function') {
+        window.refreshMapSize();
+    }
 }
 
 function bindNotificationPanelEvents() {
@@ -1204,6 +1404,8 @@ window.centerMap = centerMap;
 window.selectNotification = selectNotification;
 window.openNotificationDetails = openNotificationDetails;
 window.closeNotificationDetailsModal = closeNotificationDetailsModal;
+window.markAsResolved = markAsResolved;
+window.markAsCancelled = markAsCancelled;
 window.refreshMapSize = function refreshMapSize() {
     if (map && typeof map.invalidateSize === 'function') {
         map.invalidateSize();
