@@ -1,99 +1,888 @@
+/*
+ *  Copyright (c) 2015 The WebRTC project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree.
+ */
+'use strict';
+
 /* =========================================================
-   webrtc.js — Multi-Admin PeerJS Dashboard
+   webrtc.js — Multi-Admin Native WebRTC Dashboard
    =========================================================
-   Integrates with the existing Supabase `admins` table.
-   Each admin session gets its own unique PeerJS ID. Status
-   management is atomic and respects call concurrency limits.
-   Fully compatible with the Flutter caller application.
+   Uses native RTCPeerConnection + Supabase Realtime broadcasts
+   for signaling. Supports multiple simultaneously online admins.
    ========================================================= */
 
 const CALL_STATES = Object.freeze({
-    IDLE: 'Idle',
-    RINGING: 'Ringing',
-    CONNECTING: 'Connecting',
-    CONNECTED: 'Connected',
-    ENDED: 'Ended'
+    IDLE: 'idle',
+    RINGING: 'ringing',
+    CONNECTING: 'connecting',
+    CONNECTED: 'connected',
+    ENDED: 'ended'
 });
 
-let callState = CALL_STATES.IDLE;
+const CALL_STATUS = Object.freeze({ available: 'available', busy: 'busy', offline: 'offline' });
 
+const CALL_DISPATCH_CHANNEL = 'call-dispatch';
+const ALREADY_ANSWERED_DISPLAY_MS = 3000;
+
+// Per-admin state container
+const adminState = {
+    callState: CALL_STATES.IDLE,
+    pc: null,
+    localStream: null,
+    remoteStream: null,
+    currentCall: null,
+    incomingCallId: null,
+    callerPeerId: null,
+    targetPeerId: null,
+    timerInterval: null,
+    seconds: 0,
+    isDestroyed: false,
+    adminId: null,
+    peerId: null,
+    activeCallRecordId: null,
+    pendingIncomingUi: false,
+    alreadyAnsweredTimeout: null,
+    dispatchChannel: null,
+    pendingOffer: null,
+    iceCandidatesQueue: [],
+    lastResult: null,
+    audioLevels: [],
+    lastAudioLevelTime: 0,
+    useDtx: false,
+    useFec: true,
+    bitrateGraph: null,
+    bitrateSeries: null,
+    targetBitrateSeries: null,
+    headerrateSeries: null,
+    packetGraph: null,
+    packetSeries: null,
+    audioLevelGraph: null,
+    audioLevelSeries: null
+};
+
+// DOM references
+const dom = {};
+
+function cacheDomReferences() {
+    dom.idleState = document.getElementById('idleState');
+    dom.incomingState = document.getElementById('incomingState');
+    dom.activeState = document.getElementById('activeState');
+    dom.callTimer = document.getElementById('callTimer');
+    dom.remoteAudio = document.getElementById('remoteAudio');
+    dom.incomingTitle = dom.incomingState ? dom.incomingState.querySelector('p') : null;
+    dom.incomingContainer = dom.incomingState ? dom.incomingState.querySelector('.flex') : null;
+}
+
+const isDashboard = () => Boolean(dom.idleState && dom.incomingState && dom.activeState);
+
+// =========================================================
+// UI HELPERS
+// =========================================================
+function show(el) { if (el) el.classList.remove('hidden'); }
+function hide(el) { if (el) el.classList.add('hidden'); }
+
+function setStatus(text) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = text;
+}
+
+function ensureIncomingCallUI() {
+    if (!isDashboard()) return;
+    if (isOnCall()) {
+        hide(dom.idleState);
+        hide(dom.incomingState);
+        show(dom.activeState);
+    } else if (adminState.pendingIncomingUi || adminState.incomingCallId) {
+        hide(dom.idleState);
+        show(dom.incomingState);
+        hide(dom.activeState);
+    } else {
+        hide(dom.incomingState);
+        hide(dom.activeState);
+        show(dom.idleState);
+    }
+}
+
+// =========================================================
+// STATE LOGGING
+// =========================================================
 function logCallState(newState, reason) {
-    const prev = callState;
+    const prev = adminState.callState;
     if (prev === newState) return;
     const timestamp = new Date().toISOString();
     console.log(`[CallState] ${prev} → ${newState}${reason ? ` (${reason})` : ''} @ ${timestamp}`);
-    callState = newState;
+    adminState.callState = newState;
 }
 
 function transitionTo(newState, reason) {
     logCallState(newState, reason);
 }
 
-const CALL_STATUS = Object.freeze({ available: 'available', busy: 'busy', offline: 'offline' });
+// =========================================================
+// PEER ID PERSISTENCE
+// =========================================================
+function persistPeerId(id) {
+    if (id) sessionStorage.setItem('adminPeerId', id);
+}
 
-let peer = null;
-let currentCall = null;
-let incomingCall = null;
-let localStream = null;
-let timerInterval = null;
-let seconds = 0;
-let isDestroyed = false;
-let adminId = null;
-let peerId = null;
-let activeCallRecordId = null;
+function getStoredPeerId() {
+    return sessionStorage.getItem('adminPeerId');
+}
 
-const CALL_RECORDS_STORAGE_KEY = 'safezone_call_records';
+function generatePeerId() {
+    const suffix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+    return `admin-${suffix}`;
+}
 
-function readCallRecords() {
+// =========================================================
+// SUPABASE: ADMIN SESSION
+// =========================================================
+async function registerAdminSession() {
+    const storedAdminId = sessionStorage.getItem('adminUserID');
+    if (!storedAdminId || !window.supabaseClient) return null;
+
+    const storedPeerId = getStoredPeerId();
+    const newPeerId = storedPeerId || generatePeerId();
+    const now = new Date().toISOString();
+
     try {
-        return JSON.parse(localStorage.getItem(CALL_RECORDS_STORAGE_KEY) || '[]');
-    } catch (e) {
-        return [];
+        const { data, error } = await window.supabaseClient
+            .from('admins')
+            .update({
+                is_online: true,
+                call_status: CALL_STATUS.available,
+                peer_id: newPeerId,
+                last_seen: now
+            })
+            .eq('id', storedAdminId)
+            .select()
+            .single();
+
+        if (error || !data) {
+            console.error('Failed to register admin session:', error);
+            return null;
+        }
+
+        adminState.adminId = data.id;
+        adminState.peerId = data.peer_id || newPeerId;
+        persistPeerId(adminState.peerId);
+        return data;
+    } catch (err) {
+        console.error('Exception registering admin session:', err);
+        return null;
     }
 }
 
-function saveCallRecords(records) {
+async function setCallStatus(status) {
+    if (!adminState.adminId || !window.supabaseClient) return;
     try {
-        localStorage.setItem(CALL_RECORDS_STORAGE_KEY, JSON.stringify(records));
-    } catch (e) {
-        console.error('Failed to save call records:', e);
+        await window.supabaseClient
+            .from('admins')
+            .update({
+                call_status: status,
+                last_seen: new Date().toISOString()
+            })
+            .eq('id', adminState.adminId);
+    } catch (err) {
+        console.error('Failed to update call status:', err);
     }
 }
 
-function emitCallRecordsUpdated() {
+async function clearAdminSession() {
+    if (!adminState.adminId || !window.supabaseClient) return;
     try {
-        window.dispatchEvent(new Event('call-records-updated'));
+        await window.supabaseClient
+            .from('admins')
+            .update({
+                is_online: false,
+                call_status: CALL_STATUS.offline,
+                peer_id: null,
+                last_seen: new Date().toISOString()
+            })
+            .eq('id', adminState.adminId);
+    } catch (err) {
+        console.error('Failed to clear admin session:', err);
+    }
+}
+
+// =========================================================
+// CALL DISPATCH: SUPABASE REALTIME BROADCAST
+// =========================================================
+async function subscribeToCallDispatches() {
+    if (!window.supabaseClient) return;
+    try {
+        if (adminState.dispatchChannel) {
+            try { await window.supabaseClient.removeChannel(adminState.dispatchChannel); } catch (e) { /* ignore */ }
+            adminState.dispatchChannel = null;
+        }
+
+        adminState.dispatchChannel = window.supabaseClient.channel(CALL_DISPATCH_CHANNEL, {
+            config: { broadcast: { self: true } }
+        });
+
+        adminState.dispatchChannel.on('broadcast', { event: 'call-offer' }, (payload) => {
+            sanitizeHandleCallOffer(payload);
+        });
+
+        adminState.dispatchChannel.on('broadcast', { event: 'call-answer' }, (payload) => {
+            sanitizeHandleCallAnswer(payload);
+        });
+
+        adminState.dispatchChannel.on('broadcast', { event: 'call-ice-candidate' }, (payload) => {
+            sanitizeHandleCallIceCandidate(payload);
+        });
+
+        adminState.dispatchChannel.on('broadcast', { event: 'call-accepted' }, (payload) => {
+            sanitizeHandleCallAcceptedBroadcast(payload);
+        });
+
+        adminState.dispatchChannel.on('broadcast', { event: 'call-ended' }, (payload) => {
+            sanitizeHandleCallEndedBroadcast(payload);
+        });
+
+        await adminState.dispatchChannel.subscribe();
+        console.log('[CallDispatch] Subscribed to channel:', CALL_DISPATCH_CHANNEL);
+    } catch (e) {
+        console.error('Failed to subscribe to call dispatches:', e);
+        adminState.dispatchChannel = null;
+    }
+}
+
+function sanitizeHandleCallOffer(payload) {
+    const { callId, from, sdp } = payload || {};
+    if (!callId || !from || !sdp) return;
+    if (!adminState.peerId) return;
+    handleCallOffer(callId, from, adminState.peerId, sdp);
+}
+
+function sanitizeHandleCallAnswer(payload) {
+    const { callId, from, to, sdp } = payload || {};
+    if (!callId || !from || !to || !sdp) return;
+    if (to !== adminState.peerId) return;
+    handleCallAnswer(callId, from, to, sdp);
+}
+
+function sanitizeHandleCallIceCandidate(payload) {
+    const { callId, from, to, candidate } = payload || {};
+    if (!callId || !from || !to || !candidate) return;
+    if (to !== adminState.peerId) return;
+    handleCallIceCandidate(callId, from, to, candidate);
+}
+
+function sanitizeHandleCallAcceptedBroadcast(payload) {
+    const callId = typeof payload?.callId === 'string' ? payload.callId : null;
+    if (!callId || adminState.incomingCallId !== callId) return;
+    const acceptedBy = typeof payload?.acceptedBy === 'string' ? payload.acceptedBy : null;
+    handleCallAcceptedBroadcast(callId, acceptedBy);
+}
+
+function sanitizeHandleCallEndedBroadcast(payload) {
+    const callId = typeof payload?.callId === 'string' ? payload.callId : null;
+    if (!callId || adminState.incomingCallId !== callId) return;
+    handleCallEndedBroadcast(callId);
+}
+
+// =========================================================
+// WEBRTC PEER CONNECTION
+// =========================================================
+function isOnCall() {
+    return adminState.currentCall !== null && adminState.currentCall.open;
+}
+
+async function createPeerConnection() {
+    if (adminState.pc) {
+        adminState.pc.close();
+        adminState.pc = null;
+    }
+    adminState.pc = new RTCPeerConnection(null);
+    adminState.iceCandidatesQueue = [];
+
+    adminState.pc.ontrack = (e) => {
+        if (!adminState.remoteStream) {
+            adminState.remoteStream = new MediaStream();
+        }
+        adminState.remoteStream.addTrack(e.track);
+        if (dom.remoteAudio && dom.remoteAudio.srcObject !== adminState.remoteStream) {
+            dom.remoteAudio.srcObject = adminState.remoteStream;
+            console.log('Received remote stream');
+        }
+    };
+
+    adminState.pc.onicecandidate = async (e) => {
+        if (!e.candidate) return;
+        if (!adminState.incomingCallId) return;
+        await broadcastSignaling('call-ice-candidate', {
+            callId: adminState.incomingCallId,
+            from: adminState.peerId,
+            to: adminState.callerPeerId,
+            candidate: e.candidate.toJSON()
+        });
+    };
+
+    adminState.pc.onconnectionstatechange = () => {
+        console.log('[pc] connection state:', adminState.pc ? adminState.pc.connectionState : 'null');
+    };
+}
+
+async function broadcastSignaling(event, payload = {}) {
+    if (!window.supabaseClient) return;
+    const channel = adminState.dispatchChannel || window.supabaseClient.channel(CALL_DISPATCH_CHANNEL);
+    try {
+        if (!adminState.dispatchChannel) {
+            await channel.subscribe();
+        }
+        await channel.send({
+            type: 'broadcast',
+            event,
+            payload
+        });
+    } catch (e) {
+        console.error('[WebRTC] Broadcast failed:', event, e);
+    }
+}
+
+// =========================================================
+// INCOMING CALL HANDLERS
+// =========================================================
+function handleCallOffer(callId, from, to, sdp) {
+    if (adminState.callState !== CALL_STATES.IDLE) return;
+    if (isOnCall()) return;
+
+    adminState.incomingCallId = callId;
+    adminState.callerPeerId = from;
+    adminState.pendingOffer = sdp;
+
+    transitionTo(CALL_STATES.RINGING, 'incoming offer');
+    if (isDashboard()) {
+        adminState.pendingIncomingUi = true;
+        ensureIncomingCallUI();
+        setStatus('Incoming call...');
+        playIncomingRingtone();
+    }
+    console.log('[WebRTC] Incoming call offer from:', from, 'callId:', callId);
+}
+
+async function answerCall() {
+    if (!adminState.pendingOffer || !adminState.incomingCallId) {
+        console.warn('[WebRTC] No pending offer to answer.');
+        return;
+    }
+
+    const callId = adminState.incomingCallId;
+    const callerPeerId = adminState.callerPeerId;
+
+    await createPeerConnection();
+
+    const offerDesc = new RTCSessionDescription({
+        type: 'offer',
+        sdp: adminState.pendingOffer
+    });
+    await adminState.pc.setRemoteDescription(offerDesc);
+
+    // Flush queued ICE candidates
+    while (adminState.iceCandidatesQueue.length > 0) {
+        const candidate = adminState.iceCandidatesQueue.shift();
+        try {
+            await adminState.pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+            console.error('[WebRTC] Failed to add queued ICE candidate:', e);
+        }
+    }
+
+    const answer = await adminState.pc.createAnswer();
+    await adminState.pc.setLocalDescription(answer);
+
+    await broadcastSignaling('call-answer', {
+        callId,
+        from: adminState.peerId,
+        to: callerPeerId,
+        sdp: adminState.pc.localDescription.sdp
+    });
+
+    adminState.pendingOffer = null;
+    adminState.callerPeerId = null;
+
+    if (isDashboard()) {
+        adminState.pendingIncomingUi = false;
+        hide(dom.incomingState);
+        show(dom.activeState);
+        setStatus('Call active');
+    }
+
+    transitionTo(CALL_STATES.CONNECTED, 'call answered');
+    adminState.currentCall = { open: true };
+
+    startStatsPolling();
+
+    adminState.seconds = 0;
+    clearInterval(adminState.timerInterval);
+    adminState.timerInterval = setInterval(() => {
+        adminState.seconds++;
+        const m = String(Math.floor(adminState.seconds / 60)).padStart(2, '0');
+        const s = String(adminState.seconds % 60).padStart(2, '0');
+        if (dom.callTimer) dom.callTimer.textContent = `${m}:${s}`;
+    }, 1000);
+
+    console.log('[WebRTC] Answered call:', callId);
+}
+
+async function handleCallAnswer(callId, from, to, sdp) {
+    if (!adminState.pc || callId !== adminState.activeCallRecordId) return;
+    try {
+        const answerDesc = new RTCSessionDescription({
+            type: 'answer',
+            sdp: sdp
+        });
+        await adminState.pc.setRemoteDescription(answerDesc);
+        console.log('[WebRTC] Set remote answer for:', callId);
+    } catch (e) {
+        console.error('[WebRTC] Failed to set remote answer:', e);
+    }
+}
+
+async function handleCallIceCandidate(callId, from, to, candidate) {
+    if (!adminState.pc || callId !== adminState.activeCallRecordId) return;
+    if (to !== adminState.peerId) return;
+    try {
+        if (adminState.pc.remoteDescription && adminState.pc.remoteDescription.type) {
+            await adminState.pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } else {
+            adminState.iceCandidatesQueue.push(candidate);
+        }
+    } catch (e) {
+        console.error('[WebRTC] Failed to add ICE candidate:', e);
+    }
+}
+
+function handleCallAcceptedBroadcast(callId, acceptedBy) {
+    if (String(acceptedBy) === String(adminState.adminId || '')) {
+        console.log('[CallDispatch] Ignoring own acceptance broadcast:', callId);
+        return;
+    }
+
+    console.log('[CallDispatch] Call accepted by another admin:', callId, 'acceptedBy:', acceptedBy);
+    adminState.incomingCallId = null;
+    adminState.pendingOffer = null;
+    adminState.pendingIncomingUi = false;
+    stopRingtone();
+    hide(dom.incomingState);
+    show(dom.idleState);
+    setStatus('Waiting for call...');
+    transitionTo(CALL_STATES.IDLE, 'call accepted by another admin');
+}
+
+function handleCallEndedBroadcast(callId) {
+    console.log('[WebRTC] Call ended broadcast received:', callId);
+    endCall();
+}
+
+// =========================================================
+// CALLEE ACTIONS
+// =========================================================
+async function acceptCall() {
+    if (!isDashboard()) return;
+
+    if (!adminState.pendingOffer) {
+        // Socket.io dispatch fallback
+        if (window.supabaseClient && adminState.incomingCallId) {
+            await broadcastSignaling('call-accepted', {
+                callId: adminState.incomingCallId,
+                acceptedBy: adminState.adminId,
+                acceptedPeerId: adminState.peerId
+            });
+        }
+        return;
+    }
+
+    await answerCall();
+}
+
+function rejectCall() {
+    if (adminState.incomingCallId) {
+        broadcastSignaling('call-ended', {
+            callId: adminState.incomingCallId,
+            from: adminState.peerId
+        }).catch(() => {});
+    }
+    adminState.incomingCallId = null;
+    adminState.pendingOffer = null;
+    adminState.pendingIncomingUi = false;
+    transitionTo(CALL_STATES.IDLE, 'call rejected');
+    stopRingtone();
+    resetUI();
+}
+
+function endCall() {
+    if (adminState.pc) {
+        adminState.pc.close();
+        adminState.pc = null;
+    }
+    if (adminState.incomingCallId) {
+        broadcastSignaling('call-ended', {
+            callId: adminState.incomingCallId,
+            from: adminState.peerId
+        }).catch(() => {});
+    }
+    adminState.currentCall = null;
+    adminState.incomingCallId = null;
+    adminState.pendingOffer = null;
+    adminState.callerPeerId = null;
+    stopStatsPolling();
+    resetUI();
+}
+
+// =========================================================
+// AUDIO
+// =========================================================
+let ringtoneAudio = null;
+
+function playIncomingRingtone() {
+    stopRingtone();
+    try {
+        ringtoneAudio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3');
+        ringtoneAudio.volume = 0.8;
+        ringtoneAudio.loop = true;
+        ringtoneAudio.play().catch(() => {});
     } catch (e) {
         /* ignore */
     }
 }
 
-function createIncomingCallRecord(call) {
-    const record = {
-        id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        peerId: call?.peer || 'Unknown caller',
-        status: 'received',
-        receivedAt: new Date().toISOString(),
-        durationSeconds: 0
-    };
-
-    const records = readCallRecords();
-    records.unshift(record);
-    saveCallRecords(records.slice(0, 200));
-    emitCallRecordsUpdated();
-    return record.id;
+function stopRingtone() {
+    if (ringtoneAudio) {
+        try { ringtoneAudio.pause(); } catch (e) { /* ignore */ }
+        ringtoneAudio = null;
+    }
 }
 
-function updateCallRecord(recordId, updates) {
-    if (!recordId) return;
-    const records = readCallRecords();
-    const index = records.findIndex(entry => entry.id === recordId);
-    if (index < 0) return;
-    records[index] = { ...records[index], ...updates };
-    saveCallRecords(records);
-    emitCallRecordsUpdated();
+// =========================================================
+// UI: ALREADY ANSWERED NOTIFICATION
+// =========================================================
+function showAlreadyAnswered() {
+    if (!isDashboard()) return;
+    hide(dom.idleState);
+    hide(dom.activeState);
+
+    if (dom.incomingTitle) dom.incomingTitle.textContent = 'Call Answered';
+    if (dom.incomingContainer) {
+        dom.incomingContainer.innerHTML = `<p class="text-white/80 text-xs">This call has been answered by another administrator.</p>`;
+    }
+    show(dom.incomingState);
+
+    if (adminState.alreadyAnsweredTimeout) clearTimeout(adminState.alreadyAnsweredTimeout);
+    adminState.alreadyAnsweredTimeout = setTimeout(() => {
+        hide(dom.incomingState);
+        show(dom.idleState);
+        restoreIncomingButtons();
+    }, ALREADY_ANSWERED_DISPLAY_MS);
 }
 
+function restoreIncomingButtons() {
+    if (!dom.incomingContainer) return;
+    dom.incomingContainer.innerHTML = `
+        <div class="flex flex-col items-center gap-1">
+            <button onclick="acceptCall()" class="w-11 h-11 rounded-full bg-green-500 hover:bg-green-400 active:scale-95 flex items-center justify-center transition-transform">
+                <svg class="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C11.4 21 3 12.6 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+            </button>
+            <span class="text-green-300 text-xs">Accept</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+            <button onclick="rejectCall()" class="w-11 h-11 rounded-full bg-red-500 hover:bg-red-400 active:scale-95 flex items-center justify-center transition-transform">
+                <svg class="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.1.3-4.5.7v3.1c0 .4-.2.8-.5 1-.8.5-1.6 1.1-2.2 1.8-.3.3-.8.3-1.1 0L1.1 13c-.3-.3-.3-.8 0-1.1C3.4 9.4 7.5 8 12 8s8.6 1.4 10.9 3.9c.3.3.3.8 0 1.1l-2.6 2.6c-.3.3-.8.3-1.1 0-.7-.7-1.4-1.3-2.2-1.8-.3-.2-.5-.6-.5-1V9.7C15.1 9.3 13.6 9 12 9z"/></svg>
+            </button>
+            <span class="text-red-300 text-xs">Reject</span>
+        </div>
+    `;
+}
+
+// =========================================================
+// STATS POLLING & GRAPHS
+// =========================================================
+function startStatsPolling() {
+    stopStatsPolling();
+    if (!adminState.bitrateGraph && dom.bitrateCanvas) {
+        adminState.bitrateSeries = new TimelineDataSeries();
+        adminState.targetBitrateSeries = new TimelineDataSeries();
+        adminState.targetBitrateSeries.setColor('blue');
+        adminState.headerrateSeries = new TimelineDataSeries();
+        adminState.headerrateSeries.setColor('green');
+        adminState.bitrateGraph = new TimelineGraphView(dom.bitrateGraph || 'bitrateGraph', dom.bitrateCanvas || 'bitrateCanvas');
+        adminState.bitrateGraph.setDataSeries([adminState.bitrateSeries, adminState.headerrateSeries, adminState.targetBitrateSeries]);
+        adminState.bitrateGraph.updateEndDate();
+    }
+    if (!adminState.packetGraph && dom.packetCanvas) {
+        adminState.packetSeries = new TimelineDataSeries();
+        adminState.packetGraph = new TimelineGraphView(dom.packetGraph || 'packetGraph', dom.packetCanvas || 'packetCanvas');
+        adminState.packetGraph.setDataSeries([adminState.packetSeries]);
+        adminState.packetGraph.updateEndDate();
+    }
+    if (!adminState.audioLevelGraph && dom.audioLevelCanvas) {
+        adminState.audioLevelSeries = new TimelineDataSeries();
+        adminState.audioLevelGraph = new TimelineGraphView(dom.audioLevelGraph || 'audioLevelGraph', dom.audioLevelCanvas || 'audioLevelCanvas');
+        adminState.audioLevelGraph.setDataSeries([adminState.audioLevelSeries]);
+        adminState.audioLevelGraph.updateEndDate();
+    }
+
+    adminState.statsInterval = window.setInterval(() => {
+        if (!adminState.pc) return;
+        const sender = adminState.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+        if (!sender) return;
+        sender.getStats().then(res => {
+            res.forEach(report => {
+                let bytes;
+                let headerBytes;
+                let packets;
+                if (report.type === 'outbound-rtp') {
+                    if (report.isRemote) return;
+                    const now = report.timestamp;
+                    bytes = report.bytesSent;
+                    headerBytes = report.headerBytesSent;
+                    packets = report.packetsSent;
+                    if (adminState.lastResult && adminState.lastResult.has(report.id)) {
+                        const deltaT = (now - adminState.lastResult.get(report.id).timestamp) / 1000;
+                        if (deltaT > 0) {
+                            const bitrate = 8 * (bytes - adminState.lastResult.get(report.id).bytesSent) / deltaT;
+                            const headerrate = 8 * (headerBytes - adminState.lastResult.get(report.id).headerBytesSent) / deltaT;
+
+                            if (adminState.bitrateSeries) adminState.bitrateSeries.addPoint(now, bitrate);
+                            if (adminState.headerrateSeries) adminState.headerrateSeries.addPoint(now, headerrate);
+                            if (adminState.targetBitrateSeries && report.targetBitrate) {
+                                adminState.targetBitrateSeries.addPoint(now, report.targetBitrate);
+                            }
+                            if (adminState.bitrateGraph) {
+                                adminState.bitrateGraph.setDataSeries([adminState.bitrateSeries, adminState.headerrateSeries, adminState.targetBitrateSeries]);
+                                adminState.bitrateGraph.updateEndDate();
+                            }
+
+                            if (adminState.packetSeries) {
+                                adminState.packetSeries.addPoint(now, (packets - adminState.lastResult.get(report.id).packetsSent) / deltaT);
+                            }
+                            if (adminState.packetGraph) {
+                                adminState.packetGraph.setDataSeries([adminState.packetSeries]);
+                                adminState.packetGraph.updateEndDate();
+                            }
+                        }
+                    }
+                }
+            });
+            adminState.lastResult = res;
+        });
+    }, 1000);
+}
+
+function stopStatsPolling() {
+    if (adminState.statsInterval) {
+        clearInterval(adminState.statsInterval);
+        adminState.statsInterval = null;
+    }
+}
+
+// =========================================================
+// TIMELINE GRAPH IMPLEMENTATION
+// =========================================================
+class TimelineDataSeries {
+    constructor() {
+        this.data = [];
+        this.color = '#0f0';
+    }
+    setColor(color) {
+        this.color = color;
+    }
+    addPoint(time, value) {
+        this.data.push({ time, value });
+        if (this.data.length > 2000) {
+            this.data = this.data.slice(-1500);
+        }
+    }
+    clear() {
+        this.data = [];
+    }
+}
+
+class TimelineGraphView {
+    constructor(graphDiv, canvas) {
+        this.graphDiv = typeof graphDiv === 'string' ? document.getElementById(graphDiv) : graphDiv;
+        this.canvas = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
+        this.dataSeries = [];
+        this.endTime = Date.now();
+        this.startTime = this.endTime;
+        this.initialized = false;
+        if (this.canvas) {
+            this.ctx = this.canvas.getContext('2d');
+            this.resizeCanvas();
+            this.draw();
+            if (typeof window !== 'undefined') {
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+        }
+    }
+    resizeCanvas() {
+        if (!this.canvas) return;
+        const parent = this.canvas.parentElement;
+        if (!parent) return;
+        this.canvas.width = parent.clientWidth || 320;
+        this.canvas.height = parent.clientHeight || 120;
+        this.initialized = true;
+    }
+    updateEndDate() {
+        this.endTime = Date.now();
+        if (this.dataSeries.length > 0) {
+            const allTimes = this.dataSeries.flatMap(s => s.data.map(d => d.time));
+            if (allTimes.length > 0) {
+                this.startTime = Math.min(this.startTime, Math.min(...allTimes));
+                this.endTime = Math.max(this.endTime, Math.max(...allTimes));
+            }
+        }
+        this.draw();
+    }
+    setDataSeries(series) {
+        this.dataSeries = series;
+        this.updateEndDate();
+    }
+    draw() {
+        if (!this.ctx || !this.canvas || !this.initialized) return;
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(0, 0, w, h);
+        const range = this.endTime - this.startTime || 1;
+        let minVal = Infinity, maxVal = -Infinity;
+        this.dataSeries.forEach(s => {
+            s.data.forEach(d => {
+                if (d.value < minVal) minVal = d.value;
+                if (d.value > maxVal) maxVal = d.value;
+            });
+        });
+        if (!isFinite(minVal)) minVal = 0;
+        if (!isFinite(maxVal)) maxVal = 1;
+        const padding = 10;
+        const graphH = h - padding * 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = padding + (graphH * i) / 4;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+        this.dataSeries.forEach(series => {
+            ctx.strokeStyle = series.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let first = true;
+            series.data.forEach(d => {
+                const x = ((d.time - this.startTime) / range) * w;
+                const y = padding + graphH - ((d.value - minVal) / (maxVal - minVal || 1)) * graphH;
+                if (first) {
+                    ctx.moveTo(x, y);
+                    first = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+        });
+        const mid = (maxVal + minVal) / 2;
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '10px monospace';
+        ctx.fillText(maxVal.toFixed(0), 2, padding + 8);
+        ctx.fillText(mid.toFixed(0), 2, padding + graphH / 2 + 3);
+        ctx.fillText(minVal.toFixed(0), 2, padding + graphH - 2);
+    }
+}
+
+// =========================================================
+// UI RESET & RESOURCE CLEANUP
+// =========================================================
+async function resetUI() {
+    clearInterval(adminState.timerInterval);
+    if (adminState.localStream) {
+        adminState.localStream.getTracks().forEach(track => track.stop());
+        adminState.localStream = null;
+    }
+    if (dom.remoteAudio && dom.remoteAudio.srcObject) {
+        dom.remoteAudio.srcObject.getTracks().forEach(track => track.stop());
+        dom.remoteAudio.srcObject = null;
+    }
+    if (dom.callTimer) dom.callTimer.textContent = '00:00';
+
+    if (adminState.alreadyAnsweredTimeout) {
+        clearTimeout(adminState.alreadyAnsweredTimeout);
+        adminState.alreadyAnsweredTimeout = null;
+    }
+
+    adminState.pendingIncomingUi = false;
+    adminState.remoteStream = null;
+    adminState.incomingCallId = null;
+    adminState.currentCall = null;
+    adminState.lastResult = null;
+    adminState.pendingOffer = null;
+    adminState.callerPeerId = null;
+    adminState.iceCandidatesQueue = [];
+
+    if (adminState.bitrateGraph) {
+        adminState.bitrateGraph.dataSeries = [];
+        adminState.bitrateGraph.draw();
+    }
+    if (adminState.packetGraph) {
+        adminState.packetGraph.dataSeries = [];
+        adminState.packetGraph.draw();
+    }
+    if (adminState.audioLevelGraph) {
+        adminState.audioLevelGraph.dataSeries = [];
+        adminState.audioLevelGraph.draw();
+    }
+
+    hide(dom.incomingState);
+    hide(dom.activeState);
+    show(dom.idleState);
+    setStatus('Waiting for call...');
+
+    transitionTo(CALL_STATES.IDLE, 'UI reset');
+
+    if (!adminState.isDestroyed && adminState.adminId) {
+        const stillLoggedIn = sessionStorage.getItem('adminLoggedIn') === 'true';
+        if (stillLoggedIn) {
+            await setCallStatus(CALL_STATUS.available);
+        } else {
+            await clearAdminSession();
+        }
+    }
+}
+
+function destroyPeer() {
+    adminState.isDestroyed = true;
+    stopRingtone();
+
+    if (adminState.localStream) {
+        adminState.localStream.getTracks().forEach(track => track.stop());
+        adminState.localStream = null;
+    }
+    if (adminState.pc) {
+        adminState.pc.close();
+        adminState.pc = null;
+    }
+    if (adminState.dispatchChannel && window.supabaseClient) {
+        window.supabaseClient.removeChannel(adminState.dispatchChannel).catch(() => {});
+        adminState.dispatchChannel = null;
+    }
+    adminState.remoteStream = null;
+    adminState.currentCall = null;
+    adminState.incomingCallId = null;
+    adminState.pendingOffer = null;
+    adminState.callerPeerId = null;
+    stopStatsPolling();
+}
+
+// =========================================================
+// APP NAVIGATION GUARD
+// =========================================================
 function prepareAppNavigation() {
     sessionStorage.setItem('skipPeerCleanup', 'true');
     window.clearTimeout(window.__peerCleanupResetTimer);
@@ -114,453 +903,9 @@ function shouldSkipCleanup() {
 window.prepareAppNavigation = prepareAppNavigation;
 window.clearPendingAppNavigation = clearPendingAppNavigation;
 
-// DOM references (index.html)
-const idleState = document.getElementById('idleState');
-const incomingState = document.getElementById('incomingState');
-const activeState = document.getElementById('activeState');
-const callTimer = document.getElementById('callTimer');
-const remoteAudio = document.getElementById('remoteAudio');
-
-const isDashboard = Boolean(idleState && incomingState && activeState);
-let pendingIncomingUi = false;
-
-function ensureIncomingCallUI() {
-    if (!isDashboard) return;
-    if (isOnCall()) {
-        hide(idleState);
-        hide(incomingState);
-        show(activeState);
-    } else if (pendingIncomingUi || incomingCall) {
-        hide(idleState);
-        show(incomingState);
-        hide(activeState);
-    } else {
-        hide(incomingState);
-        hide(activeState);
-        show(idleState);
-    }
-}
-
-function show(el) { if (el) el.classList.remove('hidden'); }
-function hide(el) { if (el) el.classList.add('hidden'); }
-function setStatus(text) {
-    const el = document.getElementById('status');
-    if (el) el.textContent = text;
-}
-function persistPeerId(id) {
-    if (id) {
-        sessionStorage.setItem('adminPeerId', id);
-    }
-}
-function getStoredPeerId() {
-    return sessionStorage.getItem('adminPeerId');
-}
-
-
-/**
- * Generate a unique PeerJS ID for this browser session.
- */
-function generatePeerId() {
-    const suffix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
-    return `admin-${suffix}`;
-}
-
-/**
- * Register this admin in the `admins` table.
- * Sets is_logged_in = true, call_status = available, and stores peer_id.
- */
-async function registerAdminSession() {
-    const storedAdminId = sessionStorage.getItem('adminUserID');
-    if (!storedAdminId || !window.supabaseClient) return null;
-
-    const storedPeerId = getStoredPeerId();
-    const newPeerId = storedPeerId || generatePeerId();
-    const now = new Date().toISOString();
-
-    try {
-        const { data, error } = await window.supabaseClient
-            .from('admins')
-            .update({
-                is_logged_in: true,
-                call_status: CALL_STATUS.available,
-                peer_id: newPeerId,
-                last_seen: now
-            })
-            .eq('id', storedAdminId)
-            .select()
-            .single();
-
-        if (error || !data) {
-            console.error('Failed to register admin session:', error);
-            return null;
-        }
-
-        adminId = data.id;
-        peerId = data.peer_id || newPeerId;
-        persistPeerId(peerId);
-        return data;
-    } catch (err) {
-        console.error('Exception registering admin session:', err);
-        return null;
-    }
-}
-
-/**
- * Atomically update call_status and last_seen for this admin.
- */
-async function setCallStatus(status) {
-    if (!adminId || !window.supabaseClient) return;
-    try {
-        await window.supabaseClient
-            .from('admins')
-            .update({
-                call_status: status,
-                last_seen: new Date().toISOString()
-            })
-            .eq('id', adminId);
-    } catch (err) {
-        console.error('Failed to update call status:', err);
-    }
-}
-
-/**
- * Clear admin session on browser close, refresh, or logout.
- */
-async function clearAdminSession() {
-    if (!adminId || !window.supabaseClient) return;
-    try {
-        await window.supabaseClient
-            .from('admins')
-            .update({
-                is_logged_in: false,
-                call_status: CALL_STATUS.offline,
-                peer_id: null,
-                last_seen: new Date().toISOString()
-            })
-            .eq('id', adminId);
-    } catch (err) {
-        console.error('Failed to clear admin session:', err);
-    }
-}
-
-function isOnCall() {
-    return currentCall !== null && currentCall.open;
-}
-
-/**
- * Initialize PeerJS connection and register the admin in Supabase.
- */
-async function initPeer() {
-    if (peer && !peer.destroyed) return;
-    isDestroyed = false;
-
-    const adminRecord = await registerAdminSession();
-    if (!adminRecord) {
-        setStatus('Connection error');
-        return;
-    }
-
-    if (peer && !peer.destroyed) {
-        try { peer.destroy(); } catch (e) { /* ignore */ }
-    }
-
-    peer = new Peer(peerId);
-
-    peer.on('open', async () => {
-        if (peer.id) {
-            peerId = peer.id;
-            persistPeerId(peer.id);
-        }
-        if (!isOnCall()) {
-            await setCallStatus(CALL_STATUS.available);
-            transitionTo(CALL_STATES.IDLE, 'peer opened and not on call');
-            setStatus('Call not Active');
-        }
-    });
-
-    peer.on('call', async (call) => {
-        // Reject if already handling a call to prevent double-calls
-        if (incomingCall || isOnCall()) {
-            call.close();
-            return;
-        }
-
-        transitionTo(CALL_STATES.RINGING, 'incoming peer call');
-        await setCallStatus(CALL_STATUS.busy);
-
-        incomingCall = call;
-        activeCallRecordId = createIncomingCallRecord(call);
-
-        // Auto-answer if this call was accepted via Socket.io dispatch
-        if (window.pendingSocketAccept) {
-            window.pendingSocketAccept = false;
-            incomingCall.answer(localStream || new MediaStream());
-            incomingCall.on('stream', (remoteStream) => {
-                transitionTo(CALL_STATES.CONNECTED, 'remote stream received (socket dispatch)');
-                remoteAudio.srcObject = remoteStream;
-                hide(incomingState);
-                hide(document.getElementById('incoming-calls-container'));
-                show(activeState);
-                setStatus('Call active');
-
-                seconds = 0;
-                clearInterval(timerInterval);
-                timerInterval = setInterval(() => {
-                    seconds++;
-                    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-                    const s = String(seconds % 60).padStart(2, '0');
-                    if (callTimer) callTimer.textContent = `${m}:${s}`;
-                }, 1000);
-            });
-            incomingCall.on('close', async () => {
-                if (incomingCall === call) {
-                    if (activeCallRecordId && !currentCall) {
-                        updateCallRecord(activeCallRecordId, {
-                            status: 'ended',
-                            durationSeconds: seconds,
-                            endedAt: new Date().toISOString()
-                        });
-                    }
-                    incomingCall = null;
-                    transitionTo(CALL_STATES.ENDED, 'call closed');
-                    await setCallStatus(CALL_STATUS.available);
-                    resetUI();
-                }
-            });
-            incomingCall.on('error', async () => {
-                transitionTo(CALL_STATES.ENDED, 'call error');
-                await setCallStatus(CALL_STATUS.available);
-                resetUI();
-            });
-            return;
-        }
-
-        // Caller hung up before we answered
-        incomingCall.on('close', async () => {
-            if (incomingCall === call) {
-                if (activeCallRecordId && !currentCall) {
-                    updateCallRecord(activeCallRecordId, {
-                        status: 'missed',
-                        durationSeconds: 0
-                    });
-                }
-                incomingCall = null;
-                transitionTo(CALL_STATES.IDLE, 'incoming call closed before answer');
-                await setCallStatus(CALL_STATUS.available);
-                resetUI();
-            }
-        });
-
-        pendingIncomingUi = true;
-        ensureIncomingCallUI();
-        setStatus('Incoming call...');
-    });
-
-    peer.on('disconnected', async () => {
-        setStatus('Reconnecting...');
-        if (!peer.destroyed && !isDestroyed) {
-            setTimeout(async () => {
-                try {
-                    if (peer && !peer.destroyed) {
-                        await peer.reconnect();
-                        if (peer.id && adminId && peer.id !== peerId) {
-                            peerId = peer.id;
-                            await window.supabaseClient
-                                .from('admins')
-                                .update({ peer_id: peerId })
-                                .eq('id', adminId);
-                        }
-                        if (!isOnCall()) {
-                            await setCallStatus(CALL_STATUS.available);
-                            transitionTo(CALL_STATES.IDLE, 'reconnected and not on call');
-                        }
-                    }
-                } catch (e) { /* ignore */ }
-            }, 3000);
-        }
-    });
-
-    peer.on('error', async (err) => {
-        console.error('PeerJS error:', err);
-        if (err.type === 'unavailable-id') {
-            const freshPeerId = generatePeerId();
-            peerId = freshPeerId;
-            persistPeerId(freshPeerId);
-            try {
-                await window.supabaseClient
-                    .from('admins')
-                    .update({ peer_id: freshPeerId })
-                    .eq('id', adminId);
-            } catch (e) { /* ignore */ }
-            try { peer.destroy(); } catch (e) { /* ignore */ }
-            setTimeout(() => initPeer(), 1000);
-            return;
-        }
-        if (isOnCall()) {
-            console.warn('[CallState] Peer error during active call, preserving UI:', err.type);
-            return;
-        }
-        incomingCall = null;
-        transitionTo(CALL_STATES.IDLE, 'peer error while idle');
-        await setCallStatus(CALL_STATUS.available);
-        resetUI();
-    });
-}
-
-/**
- * Accept incoming call and setup the local audio stream.
- */
-function acceptCall() {
-    if (!incomingCall || !isDashboard) return;
-    window.pendingSocketAccept = false;
-
-    transitionTo(CALL_STATES.CONNECTING, 'accepting incoming call');
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then((stream) => {
-            localStream = stream;
-            currentCall = incomingCall;
-            incomingCall = null;
-
-            if (activeCallRecordId) {
-                updateCallRecord(activeCallRecordId, {
-                    status: 'accepted',
-                    acceptedAt: new Date().toISOString()
-                });
-            }
-
-            currentCall.answer(stream);
-            currentCall.on('stream', (remoteStream) => {
-                transitionTo(CALL_STATES.CONNECTED, 'remote stream received');
-                pendingIncomingUi = false;
-                remoteAudio.srcObject = remoteStream;
-                hide(incomingState);
-                show(activeState);
-                setStatus('Call active');
-
-                seconds = 0;
-                clearInterval(timerInterval);
-                timerInterval = setInterval(() => {
-                    seconds++;
-                    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-                    const s = String(seconds % 60).padStart(2, '0');
-                    if (callTimer) callTimer.textContent = `${m}:${s}`;
-                }, 1000);
-            });
-            currentCall.on('close', async () => {
-                transitionTo(CALL_STATES.ENDED, 'call closed');
-                if (activeCallRecordId) {
-                    updateCallRecord(activeCallRecordId, {
-                        status: 'ended',
-                        durationSeconds: seconds,
-                        endedAt: new Date().toISOString()
-                    });
-                }
-                await setCallStatus(CALL_STATUS.available);
-                resetUI();
-            });
-            currentCall.on('error', async () => {
-                transitionTo(CALL_STATES.ENDED, 'call error');
-                await setCallStatus(CALL_STATUS.available);
-                resetUI();
-            });
-        })
-        .catch(async () => {
-            incomingCall = null;
-            transitionTo(CALL_STATES.IDLE, 'failed to get user media');
-            await setCallStatus(CALL_STATUS.available);
-            rejectCall();
-        });
-}
-
-function rejectCall() {
-    if (incomingCall) {
-        if (activeCallRecordId) {
-            updateCallRecord(activeCallRecordId, {
-                status: 'rejected',
-                durationSeconds: 0
-            });
-        }
-        incomingCall.close();
-        incomingCall = null;
-    }
-    transitionTo(CALL_STATES.IDLE, 'call rejected');
-    resetUI();
-}
-
-function endCall() {
-    if (currentCall) {
-        currentCall.close();
-        currentCall = null;
-    }
-    notifyDispatchCallEnded();
-    // resetUI() is invoked by currentCall.on('close')
-}
-
-function notifyDispatchCallEnded() {
-    const dispatchClient = getSocketCallDispatchClient();
-    if (!dispatchClient || !dispatchClient.isConnected || !adminId) return;
-    try {
-        dispatchClient.socket.emit('end_call', {
-            adminId,
-            callId: activeCallRecordId || `peer-${Date.now()}`
-        });
-    } catch (e) { /* ignore */ }
-}
-
-/**
- * Reset UI and release media resources.
- * Determines final database status based on whether the admin
- * is still logged in or has left the dashboard.
- */
-async function resetUI() {
-    clearInterval(timerInterval);
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    if (remoteAudio) {
-        if (remoteAudio.srcObject) {
-            remoteAudio.srcObject.getTracks().forEach(track => track.stop());
-            remoteAudio.srcObject = null;
-        }
-    }
-    if (callTimer) callTimer.textContent = '00:00';
-
-    pendingIncomingUi = false;
-    window.pendingSocketAccept = false;
-    hide(incomingState);
-    hide(activeState);
-    show(idleState);
-    activeCallRecordId = null;
-    setStatus('Waiting for call...');
-    incomingCall = null;
-    currentCall = null;
-
-    transitionTo(CALL_STATES.IDLE, 'UI reset');
-
-    if (!isDestroyed && adminId) {
-        const stillLoggedIn = sessionStorage.getItem('adminLoggedIn') === 'true';
-        if (stillLoggedIn) {
-            await setCallStatus(CALL_STATUS.available);
-        } else {
-            await clearAdminSession();
-        }
-    }
-}
-
-function destroyPeer() {
-    isDestroyed = true;
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    try { peer?.destroy(); } catch (e) { /* ignore */ }
-    peer = null;
-    currentCall = null;
-    incomingCall = null;
-}
-
-// Page lifecycle — mark agent offline on refresh or close
+// =========================================================
+// LIFECYCLE HOOKS
+// =========================================================
 window.addEventListener('beforeunload', async () => {
     if (shouldSkipCleanup()) return;
     await clearAdminSession();
@@ -574,20 +919,34 @@ window.addEventListener('pagehide', async () => {
 });
 
 window.addEventListener('focus', () => {
-    console.log('[CallState] Window focused, current state:', callState, 'isOnCall:', isOnCall());
+    console.log('[CallState] Window focused, current state:', adminState.callState, 'isOnCall:', isOnCall());
     ensureIncomingCallUI();
 });
 
-// Expose cleanup hook for auth.js logout or external triggers
 window.cleanupAdminSession = async function() {
     await clearAdminSession();
     destroyPeer();
 };
 
+window.acceptCall = acceptCall;
+window.rejectCall = rejectCall;
+window.endCall = endCall;
+window.isOnCall = isOnCall;
+
+// =========================================================
+// INITIALIZATION
+// =========================================================
+async function init() {
+    cacheDomReferences();
+    await registerAdminSession();
+    await subscribeToCallDispatches();
+    console.log('[WebRTC] Initialized for admin:', adminState.adminId, 'peer:', adminState.peerId);
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        initPeer().catch((err) => console.error('initPeer failed:', err));
+        init().catch((err) => console.error('init failed:', err));
     });
 } else {
-    initPeer().catch((err) => console.error('initPeer failed:', err));
+    init().catch((err) => console.error('init failed:', err));
 }

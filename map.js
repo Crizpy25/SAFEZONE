@@ -374,6 +374,17 @@ function getRecommendedPoliceStation(lat, lng) {
     };
 }
 
+function getRecommendedFireStation(lat, lng) {
+    const results = getNearestAgencies('Fire', lat, lng, 1);
+    if (!results.length) return null;
+    const nearest = results[0];
+    return {
+        name: nearest.name,
+        hotline: getStationContact(nearest.name),
+        distanceKm: nearest.distanceKm
+    };
+}
+
 function getRecommendedHospital(lat, lng) {
     const results = getNearestAgencies('Medic', lat, lng, 1);
     if (!results.length) return null;
@@ -574,6 +585,14 @@ function normalizeNotificationStatus(status) {
     return 'Active';
 }
 
+function getNotificationStatusPriority(status) {
+    const normalized = normalizeNotificationStatus(status);
+    if (normalized === 'Active' || normalized === 'Responding' || normalized === 'Assigned') return 0;
+    if (normalized === 'Resolved') return 1;
+    if (normalized === 'Cancelled') return 2;
+    return 0;
+}
+
 function formatDetailValue(value) {
     if (typeof value === 'object') {
         return JSON.stringify(value, null, 2);
@@ -588,7 +607,7 @@ function getHandledBySectionHtml(report) {
                 <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Handled By</dt>
                 <dd class="mt-1 break-words text-sm text-slate-800">
                      <div class="font-semibold text-slate-900">${escapeMapHtml(report.handled_by)}</div>
-                    <div class="text-xs text-slate-500">📌 ${escapeMapHtml(getHandlingStatus(report))}</div>
+                    <div class="text-xs text-slate-500"> ${escapeMapHtml(getHandlingStatus(report))}</div>
                 </dd>
             </div>
         `;
@@ -730,7 +749,7 @@ function openNotificationDetailsModal(report) {
     const metaFields = Object.entries(report)
         .filter(([key, value]) => {
             if (!value && value !== 0) return false;
-            const excluded = ['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','reporter_device_id','reporter_name','phone_number','location','address'];
+            const excluded = ['id','category','status','description','latitude','longitude','lat','lng','longtitude','image_url','created_at','updated_at','device_id','reporter_device_id','reporter_name','phone_number','location','address','handled_by'];
             if (excluded.includes(key)) return false;
             return true;
         })
@@ -904,11 +923,9 @@ function renderNotificationPanel() {
     }
 
     items.sort((a, b) => {
-        const aStatus = normalizeNotificationStatus(a.report?.status);
-        const bStatus = normalizeNotificationStatus(b.report?.status);
-        const aActive = aStatus === 'Active' ? 0 : 1;
-        const bActive = bStatus === 'Active' ? 0 : 1;
-        if (aActive !== bActive) return aActive - bActive;
+        const aPriority = getNotificationStatusPriority(a.report?.status);
+        const bPriority = getNotificationStatusPriority(b.report?.status);
+        if (aPriority !== bPriority) return aPriority - bPriority;
 
         const aTime = new Date(a.report?.created_at || a.report?.updated_at || 0).getTime();
         const bTime = new Date(b.report?.created_at || b.report?.updated_at || 0).getTime();
@@ -1063,11 +1080,11 @@ function getHandledByHtml(report, id) {
         return `
             <div style="margin-top:8px; padding-top:8px; border-top:1px solid #e2e8f0;">
                 <div style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">
-                    👤 Handled By
+                     Handled By
                 </div>
                 <div style="font-size:13px; color:#334155; line-height:1.5;">
                      <div style="font-weight:700; color:#0f172a;">${escapeMapHtml(report.handled_by)}</div>
-                    <div style="font-size:12px; color:#64748b;">📌 ${escapeMapHtml(getHandlingStatus(report))}</div>
+                    <div style="font-size:12px; color:#64748b;">${escapeMapHtml(getHandlingStatus(report))}</div>
                 </div>
             </div>
         `;
@@ -1085,11 +1102,14 @@ function getIncidentPopupHtml(report, id) {
     const lng = Number(report.longitude || report.long || report.longtitude);
     const category = String(report.category || '').toLowerCase().trim();
     const isPolice = category.includes('police');
+    const isFire = category.includes('fire');
     const isMedic = category.includes('medic') || category.includes('medical') || category.includes('hospital');
-    const recommended = ((isPolice || isMedic) && Number.isFinite(lat) && Number.isFinite(lng))
+    const recommended = ((isPolice || isFire || isMedic) && Number.isFinite(lat) && Number.isFinite(lng))
         ? isPolice
             ? getRecommendedPoliceStation(lat, lng)
-            : getRecommendedHospital(lat, lng)
+            : isFire
+                ? getRecommendedFireStation(lat, lng)
+                : getRecommendedHospital(lat, lng)
         : null;
     const recommendedHtml = recommended ? `
         <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:8px;">

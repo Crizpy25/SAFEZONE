@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
@@ -72,14 +71,13 @@
             </li>
         </ul>
 
-        <div class="px-4 pb-3">
-            <button onclick="openCreateReportModal()" class="flex w-full items-center justify-center gap-2 bg-blue-600 text-white font-bold hover:bg-blue-500 rounded-lg px-4 py-3">
-                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Create Report
-            </button>
-        </div>
-
         <div class="mt-auto border-t border-white/30 p-4">
+            <div class="px-4 pb-3">
+                <button onclick="openCreateReportModal()" class="flex w-full items-center justify-center gap-2 bg-blue-600 text-white font-bold hover:bg-blue-500 rounded-lg px-4 py-3">
+                    <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Create Report
+                </button>
+            </div>
             <div class="bg-blue-800/50 rounded-xl p-4 text-center">
                 <div id="idleState">
                     <p class="text-white/60 text-sm">Waiting for call...</p>
@@ -246,7 +244,7 @@
             <img id="modal-img" src="" alt="Report attachment preview" class="w-full rounded-lg shadow-xl" />
         </div>
     </div>
-    <div id="detailsModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9998] p-4" onclick="closeDetailsModal()">
+    <div id="detailsModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9999] p-4" onclick="closeDetailsModal()">
         <div class="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
             <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
                 <div>
@@ -271,51 +269,67 @@
         </div>
     </div>
 
-    <div id="createReportModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9999] p-4" onclick="closeCreateReportModal()">
-        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
-            <div class="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+    <div id="analyticsDrillDownModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9998] p-4" onclick="closeAnalyticsDrillDown()">
+        <div class="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">New incident</p>
-                    <h2 class="text-xl font-bold text-slate-900">Create Report</h2>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Category reports</p>
+                    <h2 id="analyticsDrillDownTitle" class="text-xl font-bold text-slate-900">Reports</h2>
                 </div>
-                <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
+                <button type="button" onclick="closeAnalyticsDrillDown()" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
             </div>
-            <form id="createReportForm" class="p-5 space-y-5">
+            <div id="analyticsDrillDownContent" class="max-h-[calc(90vh-82px)] overflow-y-auto p-5"></div>
+        </div>
+    </div>
+
+    <div id="createReportModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-[9999] p-3" onclick="closeCreateReportModal()">
+        <div class="flex h-[calc(100vh-1.5rem)] max-h-[calc(100vh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="shrink-0 flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-2.5">
                 <div>
-                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Incident Type <span class="text-red-500">*</span></p>
-                    <div class="flex flex-wrap gap-2" id="incidentTypeButtons">
-                        <button type="button" data-type="Police" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Police</button>
-                        <button type="button" data-type="Fire" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Fire</button>
-                        <button type="button" data-type="Medical" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Medical</button>
-                        <button type="button" data-type="Other" class="incident-type-btn rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Other</button>
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-blue-600">New incident</p>
+                    <h2 class="text-lg font-bold text-slate-900">Create Report</h2>
+                </div>
+                <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">Close</button>
+            </div>
+            <form id="createReportForm" class="flex h-full flex-col gap-2 p-3">
+                <div class="flex gap-3">
+                    <div class="w-2/5">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Incident Type <span class="text-red-500">*</span></p>
+                        <div class="flex flex-wrap gap-1.5" id="incidentTypeButtons">
+                            <button type="button" data-type="Police" class="incident-type-btn rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Police</button>
+                            <button type="button" data-type="Fire" class="incident-type-btn rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Fire</button>
+                            <button type="button" data-type="Medical" class="incident-type-btn rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700">Medical</button>
+                        </div>
+                        <p id="incidentTypeError" class="mt-1 hidden text-[11px] text-red-500">Please select an incident type.</p>
                     </div>
-                    <p id="incidentTypeError" class="mt-1 hidden text-xs text-red-500">Please select an incident type.</p>
+                    <div class="w-3/5">
+                        <label for="reportDescription" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Description <span class="text-red-500">*</span></label>
+                        <textarea id="reportDescription" rows="2" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Describe the incident..."></textarea>
+                        <p id="descriptionError" class="mt-1 hidden text-[11px] text-red-500">Please provide a description.</p>
+                    </div>
                 </div>
-                <div>
-                    <label for="reportDescription" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Description <span class="text-red-500">*</span></label>
-                    <textarea id="reportDescription" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Describe the incident..."></textarea>
-                    <p id="descriptionError" class="mt-1 hidden text-xs text-red-500">Please provide a description.</p>
+                <div class="flex-1 min-h-0">
+                    <div id="createReportMap" class="h-full w-full rounded-lg border border-slate-200 bg-slate-100"></div>
                 </div>
-                <div>
-                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Location <span class="text-red-500">*</span></p>
-                    <p class="text-xs text-slate-400 mb-2">Click on the map to select the incident location.</p>
-                    <div id="createReportMap" class="h-80 w-full rounded-lg border border-slate-200 bg-slate-100"></div>
-                    <p id="selectedLocationDisplay" class="mt-2 text-xs text-slate-600">No location selected yet.</p>
-                    <p id="locationError" class="mt-1 hidden text-xs text-red-500">Please select a location on the map.</p>
-                    <p id="boundaryError" class="mt-1 hidden text-xs text-red-500">The selected location is outside Iloilo City. Please choose a location within Iloilo City to submit this report.</p>
-                </div>
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
+                <div class="flex gap-3">
+                    <div class="w-2/3">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Location <span class="text-red-500">*</span></p>
+                        <p class="text-[11px] text-slate-400 mb-1">Click on the map to select the incident location.</p>
+                        <p id="selectedLocationDisplay" class="text-xs text-slate-600">No location selected yet.</p>
+                        <p id="locationError" class="mt-0.5 hidden text-[11px] text-red-500">Please select a location on the map.</p>
+                        <p id="boundaryError" class="mt-0.5 hidden text-[11px] text-red-500">The selected location is outside Iloilo City. Please choose a location within Iloilo City to submit this report.</p>
+                    </div>
+                    <div class="w-1/3">
                         <label for="reportDateTime" class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date &amp; Time</label>
-                        <input id="reportDateTime" type="text" readonly class="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500">
+                        <input id="reportDateTime" type="text" readonly class="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs text-slate-500">
                     </div>
                 </div>
-                <p id="createReportError" class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"></p>
-                <div class="flex justify-end gap-3 border-t border-slate-200 pt-4">
-                    <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button>
-                    <button type="submit" id="submitReportBtn" class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500">Submit Report</button>
-                </div>
+                <p id="createReportError" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-600"></p>
             </form>
+            <div class="shrink-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2.5">
+                <button type="button" onclick="closeCreateReportModal()" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Cancel</button>
+                <button type="submit" form="createReportForm" id="submitReportBtn" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500">Submit Report</button>
+            </div>
         </div>
     </div>
 
@@ -341,7 +355,7 @@
                         </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
                                 <tr>
-                                    <td colspan="3" class="px-4 py-8 text-center text-slate-400">Loading...</td>
+                                    <td colspan="4" class="px-4 py-8 text-center text-slate-400">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -360,10 +374,14 @@
                     <p id="analyticsSummary" class="text-sm font-medium text-slate-500">Loading analytics...</p>
                 </div>
                 <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
                         <div class="flex flex-col gap-1">
                             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Time range</span>
                             <select id="analyticsRange" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All Dates</option><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</span>
+                            <select id="analyticsStatus" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All</option><option value="active">Active</option><option value="resolved">Resolved</option><option value="cancelled">Cancelled</option></select>
                         </div>
                     </div>
                     <div id="analyticsKpis" class="grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 xl:grid-cols-4"></div>
@@ -388,6 +406,7 @@
             if (lb && img) {
                 img.src = url;
                 lb.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
             }
         };
         window.closeLightbox = function() {
@@ -395,6 +414,7 @@
             if (lb) {
                 lb.classList.add('hidden');
                 document.getElementById('lightboxImage').src = '';
+                document.body.style.overflow = '';
             }
         };
         document.addEventListener('keydown', function(e) {
@@ -493,7 +513,21 @@
             const stats = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports received` : 'No reports found'], ['Total Reports Received', total.toLocaleString(), 'Across all categories'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Tracked Categories', types.length, 'Emergency report types']];
             document.getElementById('analyticsSummary').textContent = `${total.toLocaleString()} reports received across all categories`;
             document.getElementById('analyticsKpis').innerHTML = stats.map(([label, value, note]) => `<article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-xl font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
-            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50"><td class="whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-3 py-2 text-xs"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-3 py-2 text-xs"><div class="h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-3 py-2 text-right text-xs font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected date range.</td></tr>';
+            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-3 py-2 text-xs"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-3 py-2 text-xs"><div class="h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-3 py-2 text-right text-xs font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
+        }
+
+        function getAnalyticsStatusFilter() {
+            const el = document.getElementById('analyticsStatus');
+            if (!el) return 'all';
+            return String(el.value || 'all').toLowerCase();
+        }
+
+        function applyAnalyticsStatusFilter(query) {
+            const status = getAnalyticsStatusFilter();
+            if (status && status !== 'all') {
+                query = query.eq('status', status);
+            }
+            return query;
         }
 
         async function loadAnalytics() {
@@ -502,15 +536,115 @@
             if (!rows || !window.supabaseClient) return;
             rows.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-400">Loading reports...</td></tr>';
             summary.textContent = 'Loading analytics...';
-            let query = window.supabaseClient.from('incidents').select('category, created_at');
+            let query = window.supabaseClient.from('incidents').select('category, created_at, status');
             const start = analyticsStartDate(document.getElementById('analyticsRange').value);
             if (start) query = query.gte('created_at', start.toISOString());
+            query = applyAnalyticsStatusFilter(query);
             const { data, error } = await query;
             if (error) { summary.textContent = 'Unable to load analytics.'; rows.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-red-500">${escapeHtml(error.message)}</td></tr>`; return; }
             renderAnalyticsRows(Array.isArray(data) ? data : []);
         }
 
-        document.getElementById('analyticsRange').addEventListener('change', loadAnalytics);
+        function openAnalyticsDrillDownFromEvent(event) {
+            const category = event.currentTarget.dataset.category;
+            if (category) openAnalyticsDrillDown(category);
+        }
+
+        let activeAnalyticsDrillDownCategory = null;
+        let analyticsDrillDownReports = [];
+
+        async function openAnalyticsDrillDown(category) {
+            const modal = document.getElementById('analyticsDrillDownModal');
+            const content = document.getElementById('analyticsDrillDownContent');
+            const title = document.getElementById('analyticsDrillDownTitle');
+            if (!modal || !content || !title || !window.supabaseClient) return;
+
+            activeAnalyticsDrillDownCategory = category;
+            title.textContent = `${category} Reports`;
+            content.innerHTML = '<div class="p-6 text-center text-sm text-slate-400">Loading reports...</div>';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const range = document.getElementById('analyticsRange').value;
+            let query = window.supabaseClient.from('incidents').select('*');
+            const start = analyticsStartDate(range);
+            if (start) query = query.gte('created_at', start.toISOString());
+            query = applyAnalyticsStatusFilter(query);
+            query = query.order('created_at', { ascending: false, nullsFirst: false });
+
+            const { data, error } = await query;
+            if (error) {
+                content.innerHTML = `<div class="p-6 text-center text-sm text-red-500">${escapeHtml(error.message)}</div>`;
+                return;
+            }
+
+            const records = (Array.isArray(data) ? data : []).filter(record => analyticsCategory(record.category) === category);
+            renderAnalyticsDrillDownReports(records, category, content);
+        }
+
+        function openAnalyticsReportDetails(index) {
+            const report = analyticsDrillDownReports[index];
+            if (report) openDetailsModal(report);
+        }
+
+        function renderAnalyticsDrillDownReports(reports, category, container) {
+            analyticsDrillDownReports = Array.isArray(reports) ? reports : [];
+            if (!analyticsDrillDownReports.length) {
+                container.innerHTML = '<div class="p-6 text-center text-sm text-slate-500">No reports found for the selected filters.</div>';
+                return;
+            }
+
+            container.innerHTML = `<div class="space-y-3">${analyticsDrillDownReports.map((report, index) => {
+                const date = getReportDate(report);
+                const type = normalizeReportType(report.category);
+                const status = normalizeReportStatus(report.status);
+                const statusBadge = getReportStatusBadge(report.status);
+                const description = escapeHtml(report.description || 'No description provided');
+                const location = report.latitude && report.longitude
+                    ? `${Number(report.latitude).toFixed(5)}, ${Number(report.longitude).toFixed(5)}`
+                    : (escapeHtml(report.location || report.address || 'Location unavailable'));
+                const handledBy = report.handled_by ? escapeHtml(report.handled_by) : null;
+
+                return `
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 cursor-pointer transition hover:border-blue-400 hover:bg-blue-50/40" onclick="openAnalyticsReportDetails(${index})">
+                        <div class="flex flex-wrap items-center gap-2 mb-2">
+                            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${(analyticsPresentation[category] || analyticsPresentation.Other)[1]}">${escapeHtml(category)}</span>
+                            ${statusBadge}
+                            <span class="text-xs text-slate-500">${date ? escapeHtml(formatDate(date) + ' ' + formatTime(date)) : '-'}</span>
+                        </div>
+                        <p class="text-sm text-slate-800 line-clamp-2">${description}</p>
+                        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                            <span>Location: ${location}</span>
+                            ${handledBy ? `<span>Handled By: <span class="font-semibold text-slate-800">${handledBy}</span></span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('')}</div>`;
+        }
+
+        function closeAnalyticsDrillDown() {
+            const modal = document.getElementById('analyticsDrillDownModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            activeAnalyticsDrillDownCategory = null;
+            analyticsDrillDownReports = [];
+        }
+
+        document.getElementById('analyticsRange').addEventListener('change', () => {
+            loadAnalytics();
+            if (activeAnalyticsDrillDownCategory) {
+                openAnalyticsDrillDown(activeAnalyticsDrillDownCategory);
+            }
+        });
+
+        document.getElementById('analyticsStatus').addEventListener('change', () => {
+            loadAnalytics();
+            if (activeAnalyticsDrillDownCategory) {
+                openAnalyticsDrillDown(activeAnalyticsDrillDownCategory);
+            }
+        });
         window.addEventListener('hashchange', () => switchView(window.location.hash.slice(1) || 'dashboard'));
         window.addEventListener('DOMContentLoaded', () => switchView(window.location.hash.slice(1) || 'dashboard'));
 
@@ -521,8 +655,6 @@
 
     <audio id="remoteAudio" autoplay playsinline></audio>
 
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    <script src="socket-call-manager.js"></script>
     <script src="map.js"></script>
     <script>
         let allReports = [];
@@ -537,18 +669,20 @@
         }
 
         function openModal(src) {
-            document.getElementById('modal-img').src = src;
-            document.getElementById('modal').classList.remove('hidden');
-            document.getElementById('modal').classList.add('flex');
+            openLightbox(src);
         }
 
         function closeModal() {
-            document.getElementById('modal').classList.add('hidden');
-            document.getElementById('modal').classList.remove('flex');
+            closeLightbox();
         }
 
-        function openDetailsModal(reportIndex) {
-            const report = allReports[Number(reportIndex)];
+        function openDetailsModal(reportIndexOrReport) {
+            let report;
+            if (typeof reportIndexOrReport === 'object' && reportIndexOrReport !== null) {
+                report = reportIndexOrReport;
+            } else {
+                report = allReports[Number(reportIndexOrReport)];
+            }
             if (!report) return;
 
             const date = getReportDate(report);
@@ -660,7 +794,7 @@
 
         function getHandledByBadge(row) {
             if (row.handled_by) {
-                return `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">👤 ${escapeHtml(row.handled_by)}</span>`;
+                return `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"> ${escapeHtml(row.handled_by)}</span>`;
             }
             if (row.status === 'resolved' || row.status === 'cancelled') {
                 return `<span class="text-[10px] text-slate-400">-</span>`;
@@ -1162,7 +1296,7 @@
             if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="3" class="px-4 py-8 text-center text-slate-400">No call records yet.</td>
+                        <td colspan="4" class="px-4 py-8 text-center text-sm font-medium text-slate-400">No call records yet.</td>
                     </tr>
                 `;
                 return;
