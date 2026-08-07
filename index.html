@@ -357,11 +357,12 @@
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Duration</th>
                                 <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Handled By</th>
+                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Device ID</th>
                             </tr>
                         </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
                                 <tr>
-                                    <td colspan="4" class="px-4 py-8 text-center text-slate-400">Loading...</td>
+                                    <td colspan="5" class="px-4 py-8 text-center text-slate-400">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1302,7 +1303,7 @@
             if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="px-4 py-8 text-center text-sm font-medium text-slate-400">No call records yet.</td>
+                        <td colspan="5" class="px-4 py-8 text-center text-sm font-medium text-slate-400">No call records yet.</td>
                     </tr>
                 `;
                 return;
@@ -1318,14 +1319,19 @@
                 return bTime - aTime;
             });
 
-            tbody.innerHTML = sorted.map(record => `
+            tbody.innerHTML = sorted.map(record => {
+                const deviceId = record.device_id || record.deviceId || record.reporter_device_id || record.reporter_device || 'N/A';
+                const displayDeviceId = deviceId === 'N/A' ? 'N/A' : (deviceId.length > 20 ? deviceId.slice(0, 20) + '...' : deviceId);
+                return `
                 <tr class="cursor-pointer transition hover:bg-blue-50/50">
                     <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(record.received_at || record.timestamp))}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(record.received_at || record.timestamp))}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.duration_seconds))}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(record.handled_by || '-')}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700" title="${escapeHtml(deviceId)}">${escapeHtml(displayDeviceId)}</td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
         }
 
         window.renderCallRecords = renderCallRecords;
