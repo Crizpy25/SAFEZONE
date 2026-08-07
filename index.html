@@ -142,6 +142,12 @@
                             <div class="toast-text text-sm font-semibold leading-6"></div>
                         </div>
                     </div>
+                    <div id="mapLegendPanel" class="absolute bottom-4 left-3 z-[1000] bg-white/90 backdrop-blur rounded-lg border border-slate-200 shadow-lg w-56">
+                        <div class="px-2.5 py-1.5 border-b border-slate-100">
+                            <h3 class="text-[11px] font-bold text-slate-800">Map Legend</h3>
+                        </div>
+                        <div id="mapLegendContent" class="p-1.5 grid grid-cols-2 gap-1"></div>
+                    </div>
                     <div class="absolute bottom-10 right-3 z-[1000]">
                         <button onclick="centerMap()" class="bg-white/90 hover:bg-white text-gray-800 text-sm font-bold px-3 py-2 rounded shadow border border-gray-300">Re-center Map</button>
                     </div>
@@ -774,22 +780,22 @@
 
         function normalizeReportStatus(status) {
             const value = String(status || '').toLowerCase().trim();
-            if (value.includes('respond')) return 'Responding';
-            if (value.includes('resolve')) return 'Resolved';
-            if (value.includes('cancel')) return 'Cancelled';
-            return 'Active';
+            if (value.includes('respond')) return 'RESPONDING';
+            if (value.includes('resolve')) return 'RESOLVED';
+            if (value.includes('cancel')) return 'CANCELLED';
+            return 'ACTIVE';
         }
 
         function getReportStatusBadge(status) {
             const normalized = normalizeReportStatus(status);
             const styles = {
-                Active: 'bg-sky-100 text-sky-700',
-                Responding: 'bg-amber-100 text-amber-700',
-                Resolved: 'bg-emerald-100 text-emerald-700',
-                Cancelled: 'bg-rose-100 text-rose-700',
-                Assigned: 'bg-indigo-100 text-indigo-700'
+                ACTIVE: 'bg-sky-100 text-sky-700',
+                RESPONDING: 'bg-amber-100 text-amber-700',
+                RESOLVED: 'bg-emerald-100 text-emerald-700',
+                CANCELLED: 'bg-rose-100 text-rose-700',
+                ASSIGNED: 'bg-indigo-100 text-indigo-700'
             };
-            return `<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[normalized] || styles.Active}">${normalized}</span>`;
+            return `<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${styles[normalized] || styles.ACTIVE}">${normalized}</span>`;
         }
 
         function getHandledByBadge(row) {

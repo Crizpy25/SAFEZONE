@@ -315,7 +315,7 @@ const POLICE_HOTLINES = Object.freeze({
     'PS5 Mandurriao': '0998-598-6250',
     'PS6 Arevalo': '0998-598-6252',
     'PS7 City Proper': '0947-996-6568',
-    'PS8  Brgy. Obrero': '0908-689-6098',
+    'PS8 Brgy. Obrero': '0908-689-6098',
     'ICPO Police Station 9': '0908-322-8457',
     'ICPO Police Station 10': '0908-308-0940'
 });
@@ -326,6 +326,7 @@ const FIRE_HOTLINES = Object.freeze({
     'Arevalo Fire Sub-Station': '(033) 321 1096',
     'Sto. Niño Sur Fire Sub-Station': '(033) 314 7631',
     'BFP JARO FIRE SUB STATION': '(033) 500 0217',
+    'ICARE Fire station': '0919-066-2333',
     'La Paz Fire Sub-Station': '(033) 320 6963',
     'Mandurriao Fire Sub-Station': '(033) 321 0779',
     'Old Molo Fire Station': '(033) 336 0639',
@@ -578,18 +579,18 @@ function updateReportsList() {
 
 function normalizeNotificationStatus(status) {
     const value = String(status || '').toLowerCase().trim();
-    if (value.includes('respond')) return 'Responding';
-    if (value.includes('resolve')) return 'Resolved';
-    if (value.includes('cancel')) return 'Cancelled';
-    if (value.includes('assign')) return 'Assigned';
-    return 'Active';
+    if (value.includes('respond')) return 'RESPONDING';
+    if (value.includes('resolve')) return 'RESOLVED';
+    if (value.includes('cancel')) return 'CANCELLED';
+    if (value.includes('assign')) return 'ASSIGNED';
+    return 'ACTIVE';
 }
 
 function getNotificationStatusPriority(status) {
     const normalized = normalizeNotificationStatus(status);
-    if (normalized === 'Active' || normalized === 'Responding' || normalized === 'Assigned') return 0;
-    if (normalized === 'Resolved') return 1;
-    if (normalized === 'Cancelled') return 2;
+    if (normalized === 'ACTIVE' || normalized === 'RESPONDING' || normalized === 'ASSIGNED') return 0;
+    if (normalized === 'RESOLVED') return 1;
+    if (normalized === 'CANCELLED') return 2;
     return 0;
 }
 
@@ -641,7 +642,7 @@ function openMapReportDetails(report) {
     const timestamp = formatNotificationTimestamp(report);
     const lat = Number(report.latitude || report.lat);
     const lng = Number(report.longitude || report.long || report.longtitude);
-    const isTerminal = status === 'Resolved' || status === 'Cancelled';
+    const isTerminal = status === 'RESOLVED' || status === 'CANCELLED';
 
     if (!isTerminal && Number.isFinite(lat) && Number.isFinite(lng) && map) {
         map.flyTo([lat, lng], 15, { animate: true });
@@ -870,10 +871,10 @@ function getNotificationIcon(category) {
 }
 
 function getNotificationBadgeClass(status) {
-    if (status === 'Resolved') return 'bg-emerald-100 text-emerald-700';
-    if (status === 'Responding') return 'bg-amber-100 text-amber-700';
-    if (status === 'Cancelled') return 'bg-rose-100 text-rose-700';
-    if (status === 'Assigned') return 'bg-indigo-100 text-indigo-700';
+    if (status === 'RESOLVED') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'RESPONDING') return 'bg-amber-100 text-amber-700';
+    if (status === 'CANCELLED') return 'bg-rose-100 text-rose-700';
+    if (status === 'ASSIGNED') return 'bg-indigo-100 text-indigo-700';
     return 'bg-sky-100 text-sky-700';
 }
 
@@ -1069,9 +1070,9 @@ async function loadReports() {
 }
 
 function getHandlingStatus(report) {
-    if (report.status === 'resolved') return 'Resolved';
-    if (report.status === 'cancelled') return 'Cancelled';
-    if (report.handled_by) return 'Assigned';
+    if (report.status === 'resolved') return 'RESOLVED';
+    if (report.status === 'cancelled') return 'CANCELLED';
+    if (report.handled_by) return 'ASSIGNED';
     return 'Waiting for an available admin';
 }
 
@@ -1432,6 +1433,45 @@ window.refreshMapSize = function refreshMapSize() {
     }
 };
 
+function initMapLegend() {
+    const panel = document.getElementById('mapLegendPanel');
+    const content = document.getElementById('mapLegendContent');
+    if (!panel || !content) return;
+
+    const items = [
+        { icon: 'images/police.png', label: 'Police Station' },
+        { icon: 'images/fire.png', label: 'Fire Station' },
+        { icon: 'images/hospital.png', label: 'Hospital' },
+        { icon: 'images/marker-icon-blue.png', label: 'Police Report' },
+        { icon: 'images/marker-icon-red.png', label: 'Fire Report' },
+        { icon: 'images/marker-icon-green.png', label: 'Medical Report' }
+    ];
+
+    const svgIcons = {
+        'resolved': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+        'cancelled': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-red-500" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
+        'user-location': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-blue-500" fill="currentColor"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"/></svg>',
+        'admin-dispatch': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-purple-600" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>',
+        'online': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-emerald-500" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>',
+        'offline': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-slate-400" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>',
+        'boundary': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-slate-600" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/></svg>',
+        'radius': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-slate-600" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3"/></svg>',
+        'cluster': '<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-slate-700" fill="currentColor"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="16" r="3"/></svg>'
+    };
+
+    content.innerHTML = items.map(item => {
+        const iconHtml = item.icon.startsWith('svg:')
+            ? (svgIcons[item.icon.slice(4)] || '')
+            : `<img src="${item.icon}" alt="" class="h-3.5 w-3.5 object-contain shrink-0" onerror="this.style.visibility='hidden'">`;
+        return `
+            <div class="flex items-center gap-1">
+                <div class="h-4 w-4 flex items-center justify-center shrink-0">${iconHtml}</div>
+                <span class="text-[10px] font-semibold text-slate-800 leading-tight truncate">${item.label}</span>
+            </div>
+        `;
+    }).join('');
+}
+
 function tryInitializeMap() {
     const mapEl = document.getElementById('map');
     if (!mapEl) {
@@ -1444,6 +1484,7 @@ function tryInitializeMap() {
     }
     bindNotificationPanelEvents();
     initializeMap();
+    initMapLegend();
 }
 
 if (document.readyState === 'loading') {
