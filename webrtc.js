@@ -27,6 +27,7 @@ const CALL_STATUS = Object.freeze({ available: 'available', busy: 'busy', offlin
 const CALL_DISPATCH_CHANNEL = 'call-dispatch';
 const ALREADY_ANSWERED_DISPLAY_MS = 3000;
 const INCOMING_CALL_MAX_AGE_MS = 2 * 60 * 1000;
+const MEDIA_CONNECTION_TIMEOUT_MS = 15000;
 const RINGING_ALERT_STATUSES = new Set(['ringing', 'pending']);
 const TERMINAL_ALERT_STATUSES = new Set(['ended', 'cancelled', 'canceled', 'failed', 'missed', 'expired', 'completed', 'resolved', 'closed']);
 
@@ -53,10 +54,13 @@ const adminState = {
     peer: null,
     incomingPeerCall: null,
     peerReconnectTimer: null,
+    mediaConnectionTimer: null,
+    disconnectRecoveryTimer: null,
     activeCallRecordId: null,
     pendingIncomingUi: false,
     alreadyAnsweredTimeout: null,
     dispatchChannel: null,
+    activeAlertChannel: null,
     dispatchReady: null,
     pendingOffer: null,
     iceCandidatesQueue: [],
@@ -64,6 +68,8 @@ const adminState = {
     callClaims: new Map(),
     answerInProgress: false,
     answerRequested: false,
+    peerReady: false,
+    isEndingCall: false,
     isCleaningUp: false,
     lastResult: null,
     audioLevels: [],
@@ -91,9 +97,11 @@ function cacheDomReferences() {
     dom.callTimer = document.getElementById('callTimer');
     dom.remoteAudio = document.getElementById('remoteAudio');
     dom.answerCallButton = document.getElementById('answerCallButton');
+    dom.cancelCallButton = document.getElementById('cancelCallButton');
     dom.incomingTitle = dom.incomingState ? dom.incomingState.querySelector('p') : null;
     dom.incomingContainer = dom.incomingState ? dom.incomingState.querySelector('.flex') : null;
     bindAnswerButton();
+    bindCancelButton();
 }
 
 function bindAnswerButton() {
@@ -102,6 +110,49 @@ function bindAnswerButton() {
     button.dataset.answerHandlerBound = 'true';
     button.addEventListener('click', acceptCall);
     dom.answerCallButton = button;
+}
+
+function bindCancelButton() {
+    const button = document.getElementById('cancelCallButton');
+    if (!button) return;
+    button.disabled = false;
+    button.style.pointerEvents = '';
+    button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        rejectCall().catch(error => console.error('[Admin Call] Cancel handler failed:', error));
+    };
+    dom.cancelCallButton = button;
+}
+
+function enableAnswerButton() {
+    bindAnswerButton();
+    const button = dom.answerCallButton;
+    if (!button) return;
+    button.disabled = false;
+    button.removeAttribute('aria-disabled');
+    button.style.pointerEvents = '';
+    button.classList.remove('opacity-50', 'cursor-not-allowed');
+}
+
+function prepareIncomingCallControls() {
+    if (adminState.alreadyAnsweredTimeout) {
+        window.clearTimeout(adminState.alreadyAnsweredTimeout);
+        adminState.alreadyAnsweredTimeout = null;
+    }
+    restoreIncomingButtons();
+    enableAnswerButton();
+    bindCancelButton();
+}
+
+async function waitForPeerReady(timeoutMs = 5000) {
+    if (adminState.peerReady && adminState.peer?.open && !adminState.peer.destroyed) return true;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        await new Promise(resolve => window.setTimeout(resolve, 100));
+        if (adminState.peerReady && adminState.peer?.open && !adminState.peer.destroyed) return true;
+    }
+    return false;
 }
 
 const isDashboard = () => Boolean(dom.idleState && dom.incomingState && dom.activeState);
@@ -115,6 +166,32 @@ function hide(el) { if (el) el.classList.add('hidden'); }
 function setStatus(text) {
     const el = document.getElementById('status');
     if (el) el.textContent = text;
+}
+
+function startCallTimer() {
+    if (adminState.timerInterval) return;
+    adminState.seconds = 0;
+    if (dom.callTimer) dom.callTimer.textContent = '00:00';
+    adminState.timerInterval = window.setInterval(() => {
+        adminState.seconds++;
+        const minutes = String(Math.floor(adminState.seconds / 60)).padStart(2, '0');
+        const seconds = String(adminState.seconds % 60).padStart(2, '0');
+        if (dom.callTimer) dom.callTimer.textContent = `${minutes}:${seconds}`;
+    }, 1000);
+    console.log('[Admin Call] Timer started');
+}
+
+function stopCallTimer() {
+    console.log('[Admin Call] Stopping timer');
+    if (adminState.timerInterval) window.clearInterval(adminState.timerInterval);
+    adminState.timerInterval = null;
+    adminState.seconds = 0;
+    if (dom.callTimer) dom.callTimer.textContent = '00:00';
+}
+
+function clearDisconnectRecoveryTimer() {
+    if (adminState.disconnectRecoveryTimer) window.clearTimeout(adminState.disconnectRecoveryTimer);
+    adminState.disconnectRecoveryTimer = null;
 }
 
 function ensureIncomingCallUI() {
@@ -247,14 +324,91 @@ function attachPeerConnectionDiagnostics(call) {
     if (!pc || pc.__safezoneDiagnosticsAttached) return;
     pc.__safezoneDiagnosticsAttached = true;
     pc.addEventListener('connectionstatechange', () => {
-        console.log('[WebRTC] PeerJS connection state:', { callerPeerId: call.peer, state: pc.connectionState });
+        const state = pc.connectionState;
+        console.log('[WebRTC] PeerJS connection state:', { callerPeerId: call.peer, state });
+        if (state === 'connected') {
+            clearDisconnectRecoveryTimer();
+        } else if (state === 'disconnected' && !adminState.isCleaningUp) {
+            clearDisconnectRecoveryTimer();
+            adminState.disconnectRecoveryTimer = window.setTimeout(() => {
+                adminState.disconnectRecoveryTimer = null;
+                if (!adminState.isCleaningUp && pc.connectionState === 'disconnected' && adminState.currentCall === call) {
+                    console.warn('[Admin Call] Remote PeerJS connection did not recover');
+                    endCurrentCall('peerjs-disconnected', { notifyRemote: true, updateStatus: true });
+                }
+            }, 3000);
+        } else if (!adminState.isCleaningUp && (state === 'failed' || state === 'closed') && adminState.currentCall === call) {
+            console.log('[Admin Call] Remote PeerJS connection ended:', state);
+            endCurrentCall(`peerjs-${state}`, { notifyRemote: true, updateStatus: true });
+        }
     });
     pc.addEventListener('iceconnectionstatechange', () => {
-        console.log('[WebRTC] PeerJS ICE state:', { callerPeerId: call.peer, state: pc.iceConnectionState });
+        const state = pc.iceConnectionState;
+        console.log('[WebRTC] PeerJS ICE state:', { callerPeerId: call.peer, state });
+        if (!adminState.isCleaningUp && (state === 'failed' || state === 'closed') && adminState.currentCall === call) {
+            console.log('[Admin Call] Remote PeerJS ICE ended:', state);
+            endCurrentCall(`peerjs-ice-${state}`, { notifyRemote: true, updateStatus: true });
+        }
     });
     pc.addEventListener('icecandidateerror', (event) => {
         console.error('[WebRTC] PeerJS ICE candidate error:', { callerPeerId: call.peer, errorCode: event.errorCode, errorText: event.errorText, url: event.url });
     });
+}
+
+function clearMediaConnectionTimeout() {
+    if (adminState.mediaConnectionTimer) {
+        window.clearTimeout(adminState.mediaConnectionTimer);
+        adminState.mediaConnectionTimer = null;
+    }
+}
+
+function startMediaConnectionTimeout(callId, mediaCall = null) {
+    clearMediaConnectionTimeout();
+    adminState.mediaConnectionTimer = window.setTimeout(() => {
+        adminState.mediaConnectionTimer = null;
+        const activeCallId = String(adminState.activeAlertId || adminState.activeCallRecordId || adminState.incomingCallId || '');
+        if (activeCallId !== String(callId) || adminState.callState === CALL_STATES.CONNECTED) return;
+        console.error('[WebRTC] Connection timed out:', {
+            callId,
+            callerPeerId: adminState.callerPeerId,
+            adminPeerId: adminState.peer?.id,
+            peerOpen: adminState.peer?.open,
+            peerDestroyed: adminState.peer?.destroyed,
+            mediaOpen: mediaCall?.open,
+            iceState: mediaCall?.peerConnection?.iceConnectionState,
+            connectionState: mediaCall?.peerConnection?.connectionState
+        });
+        setStatus('Call connection timed out');
+        endCurrentCall('connection-timeout', { notifyRemote: true, updateStatus: true });
+    }, MEDIA_CONNECTION_TIMEOUT_MS);
+}
+
+function attachPeerConnectionDiagnosticsWhenReady(call, attempts = 8) {
+    if (!call || attempts <= 0) return;
+    if (call.peerConnection) {
+        attachPeerConnectionDiagnostics(call);
+        return;
+    }
+    window.setTimeout(() => attachPeerConnectionDiagnosticsWhenReady(call, attempts - 1), 250);
+}
+
+function attachAndPlayRemoteAudio(remoteStream) {
+    if (!dom.remoteAudio) return;
+    remoteStream.getTracks().forEach(track => {
+        if (track.__safezoneEndHandlerAttached) return;
+        track.__safezoneEndHandlerAttached = true;
+        track.addEventListener('ended', () => {
+            if (!adminState.isCleaningUp && adminState.remoteStream === remoteStream) {
+                console.log('[Admin Call] Remote audio track ended');
+                endCurrentCall('remote-audio-ended', { notifyRemote: true, updateStatus: true });
+            }
+        });
+    });
+    dom.remoteAudio.srcObject = remoteStream;
+    const playResult = dom.remoteAudio.play?.();
+    if (playResult?.catch) {
+        playResult.catch(error => console.error('[WebRTC] Remote audio playback failed:', error));
+    }
 }
 
 function schedulePeerReinitialization(reason) {
@@ -310,15 +464,13 @@ function installPeerCallHandlers(peer) {
         call.on('close', () => {
             console.log('[PeerJS] Incoming call closed:', { callerPeerId: call.peer, connectionId: call.connectionId });
             if (adminState.incomingPeerCall === call || adminState.currentCall === call) {
-                if (typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(adminState.activeAlertId || adminState.incomingCallId);
-                cleanupCall();
+                endCurrentCall('peerjs-remote-close', { notifyRemote: true, updateStatus: Boolean(adminState.claimedCallId) });
             }
         });
         call.on('error', (error) => {
             console.error('[PeerJS] Incoming call error:', { type: error?.type, message: error?.message, callerPeerId: call.peer });
             if (adminState.incomingPeerCall === call || adminState.currentCall === call) {
-                if (typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(adminState.activeAlertId || adminState.incomingCallId);
-                cleanupCall();
+                endCurrentCall('peerjs-error', { notifyRemote: true, updateStatus: Boolean(adminState.claimedCallId) });
             }
         });
     });
@@ -330,6 +482,9 @@ function handleIncomingPeerCallUI(deviceId) {
         return;
     }
     transitionTo(CALL_STATES.RINGING, 'PeerJS incoming call');
+    adminState.answerInProgress = false;
+    adminState.answerRequested = false;
+    prepareIncomingCallControls();
     adminState.pendingIncomingUi = true;
     ensureIncomingCallUI();
     setStatus(deviceId ? `Incoming call from ${deviceId}` : 'Incoming call...');
@@ -348,21 +503,58 @@ function getEmergencyAlertTimestamp(record) {
     return Number.isFinite(timestamp) ? timestamp : null;
 }
 
+function getAlertHandlerAdminId(record) {
+    return record?.handled_by_admin_id
+        ?? record?.answered_by_admin_id
+        ?? null;
+}
+
+function getCallerDisplayId(record) {
+    const value = record?.device_id || record?.deviceId || record?.caller_phone || null;
+    const normalized = String(value || '').trim().toLowerCase();
+    return !normalized || ['no number', 'no phone number', 'unknown', 'n/a', 'none'].includes(normalized)
+        ? null
+        : String(value).trim();
+}
+
+function maintainOwnedAcceptedCall(record) {
+    const alertId = String(record?.id || adminState.activeAlertId || adminState.incomingCallId || '');
+    console.log('[Realtime] This admin owns accepted call:', { alertId, adminId: adminState.adminId });
+    console.log('[Call State] activeCall before update:', adminState.currentCall);
+    if (record) adminState.incomingAlert = record;
+    if (alertId) {
+        adminState.activeAlertId = record?.id ?? adminState.activeAlertId;
+        adminState.incomingCallId = adminState.incomingCallId || alertId;
+        adminState.claimedCallId = adminState.claimedCallId || alertId;
+    }
+    adminState.callerPeerId = record?.caller_peer_id || record?.peer_id || adminState.callerPeerId;
+    adminState.pendingIncomingUi = false;
+    stopRingtone();
+    if (adminState.callState === CALL_STATES.RINGING) {
+        transitionTo(CALL_STATES.CONNECTING, 'accepted realtime update owned by this admin');
+        ensureIncomingCallUI();
+        setStatus('Connecting...');
+    }
+    console.log('[Call State] activeCall after update:', adminState.currentCall);
+}
+
 function handleEmergencyAlertIncomingCall(record, { source = 'unknown', eventType = null } = {}) {
     console.log('[Call Debug] Record:', record);
     console.log('[Call Debug] Status:', record?.status);
-    const callerDeviceId = record?.device_id || record?.deviceId || record?.caller_phone || null;
+    const callerDeviceId = getCallerDisplayId(record);
     const callerPeerId = record?.caller_peer_id || record?.peer_id || null;
     const latitude = record?.latitude ?? record?.lat;
     const longitude = record?.longitude ?? record?.long ?? record?.lng;
-    const answeredByAdminId = record?.answered_by_admin_id;
-    const wasAlreadyAccepted = Boolean(record?.accepted_at || record?.handled_at || record?.handled_by_admin_id || record?.handled_by);
+    const handledByAdminId = getAlertHandlerAdminId(record);
+    const wasAlreadyAccepted = Boolean(record?.accepted_at || record?.handled_at || handledByAdminId || record?.handled_by);
     const normalizedStatus = String(record?.status || '').toLowerCase().trim();
     console.log('[Call Debug] Caller device ID:', callerDeviceId);
     console.log('[Call Debug] Caller peer ID:', callerPeerId);
     console.log('[Call Debug] Coordinates:', { latitude, longitude });
     console.log('[Call Debug] Current admin is_online:', Boolean(adminState.adminId && adminState.peer && adminState.peer.open));
     console.log('[Call Debug] Current admin call_status:', adminState.callState === CALL_STATES.IDLE ? CALL_STATUS.available : CALL_STATUS.busy);
+    console.log('[Realtime] Call status changed:', normalizedStatus);
+    console.log('[Realtime] Call handler:', handledByAdminId);
 
     if (!record?.id) {
         console.warn('[Call Debug] Incoming call rejected because: alert ID is missing');
@@ -373,13 +565,16 @@ function handleEmergencyAlertIncomingCall(record, { source = 'unknown', eventTyp
     if (isEndedEmergencyAlert(record)) {
         if (isCurrentAlert) {
             console.log('[Call Cleanup] Alert ended/cancelled; removing call UI');
-            cleanupCall();
+            endCurrentCall(`realtime-status-${normalizedStatus}`, { notifyRemote: false, updateStatus: false });
         }
         return;
     }
-    if (answeredByAdminId || wasAlreadyAccepted) {
-        if (String(answeredByAdminId) !== String(adminState.adminId || '')) {
-            handleCallAcceptedBroadcast(String(record.id), String(answeredByAdminId));
+    if (wasAlreadyAccepted) {
+        if (handledByAdminId != null && String(handledByAdminId) === String(adminState.adminId || '')) {
+            maintainOwnedAcceptedCall(record);
+        } else {
+            console.log('[Realtime] Another admin owns accepted call:', { alertId: record.id, handledByAdminId });
+            handleCallAcceptedBroadcast(String(record.id), handledByAdminId == null ? null : String(handledByAdminId));
         }
         return;
     }
@@ -432,11 +627,17 @@ function handleEmergencyAlertIncomingCall(record, { source = 'unknown', eventTyp
     }
 
     console.log('[Incoming Call] New realtime call validated:', record.id);
+    adminState.answerInProgress = false;
+    adminState.answerRequested = false;
     adminState.incomingAlert = record;
     adminState.activeAlertId = record.id;
     adminState.incomingCallId = String(record.id);
     adminState.callerPeerId = callerPeerId || adminState.callerPeerId;
     adminState.pendingIncomingUi = true;
+    prepareIncomingCallControls();
+    console.log('[Incoming] New call:', record.id);
+    console.log('[Incoming] Caller peer:', callerPeerId);
+    console.log('[Incoming] Answer enabled:', !dom.answerCallButton?.disabled);
     console.log('[Call Debug] Calling incoming UI handler');
     console.log('[Call Debug] Showing incoming call UI');
     console.log('[Incoming Call] UI handler started', record);
@@ -486,6 +687,63 @@ async function updateClaimedAlertStatus(status, callId = adminState.activeAlertI
     return Boolean(data);
 }
 
+async function markClaimedCallEnded(callId) {
+    if (!window.supabaseClient || !callId || !adminState.adminId || !adminState.peerId) return false;
+    const { data, error } = await window.supabaseClient.rpc('end_emergency_call', {
+        p_alert_id: Number(callId),
+        p_admin_id: Number(adminState.adminId),
+        p_admin_peer_id: String(adminState.peerId)
+    });
+    if (error?.code === 'PGRST202') {
+        console.error('[Admin Call] end_emergency_call RPC is not installed; run supabase_call_lifecycle.sql');
+        return updateClaimedAlertStatus('ended', callId);
+    }
+    if (error) throw error;
+    const endedRecord = Array.isArray(data) ? data[0] : data;
+    console.log('[Admin Call] End status synchronized:', { callId, updated: Boolean(endedRecord) });
+    return Boolean(endedRecord);
+}
+
+async function unsubscribeActiveAlertLifecycle() {
+    const channel = adminState.activeAlertChannel;
+    adminState.activeAlertChannel = null;
+    if (channel && window.supabaseClient) {
+        try { await window.supabaseClient.removeChannel(channel); } catch (error) {
+            console.warn('[Admin Call] Failed to remove active-call subscription:', error);
+        }
+    }
+}
+
+async function subscribeToActiveAlertLifecycle(callId) {
+    if (!window.supabaseClient || !callId) return;
+    await unsubscribeActiveAlertLifecycle();
+    const normalizedCallId = String(callId);
+    const channel = window.supabaseClient
+        .channel(`active-emergency-call-${normalizedCallId}-${adminState.adminId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'emergency_alerts',
+            filter: `id=eq.${normalizedCallId}`
+        }, payload => {
+            const record = payload.new || payload.old;
+            const eventCallId = String(record?.id || '');
+            const status = String(record?.status || '').toLowerCase().trim();
+            const activeCallId = String(adminState.activeAlertId || adminState.activeCallRecordId || adminState.incomingCallId || adminState.claimedCallId || '');
+            console.log('[Admin Call] Active-call realtime update:', { eventType: payload.eventType, eventCallId, activeCallId, status });
+            if (!eventCallId || eventCallId !== activeCallId) return;
+            if (payload.eventType === 'DELETE' || TERMINAL_ALERT_STATUSES.has(status)) {
+                console.log('[Admin Call] Caller end detected from Supabase:', { callId: eventCallId, status: status || 'deleted' });
+                stopCallTimer();
+                endCurrentCall(`remote-status-${status || 'deleted'}`, { notifyRemote: false, updateStatus: false });
+            }
+        });
+    adminState.activeAlertChannel = channel;
+    channel.subscribe((status, error) => {
+        console.log('[Admin Call] Active-call subscription:', { callId: normalizedCallId, status, error: error || null });
+    });
+}
+
 async function claimIncomingCall(callId) {
     const normalizedCallId = String(callId || '');
     if (!normalizedCallId || !adminState.adminId || !adminState.peerId) {
@@ -502,12 +760,21 @@ async function claimIncomingCall(callId) {
         p_admin_peer_id: String(adminState.peerId)
     });
     if (error) throw new Error(`Emergency alert claim failed: ${error.message}`);
-    if (!data?.length) {
+    const claimedRecord = Array.isArray(data) ? data[0] : data;
+    const handledByAdminId = getAlertHandlerAdminId(claimedRecord);
+    console.log('[Answer] Claim result:', claimedRecord || null);
+    console.log('[Answer] Handler admin:', handledByAdminId);
+    console.log('[Answer] Current admin:', adminState.adminId);
+    if (!claimedRecord || String(handledByAdminId) !== String(adminState.adminId)) {
         handleCallAcceptedBroadcast(normalizedCallId, null);
         return false;
     }
 
     adminState.claimedCallId = normalizedCallId;
+    adminState.incomingAlert = claimedRecord;
+    adminState.activeAlertId = claimedRecord.id;
+    adminState.callerPeerId = claimedRecord.caller_peer_id || claimedRecord.peer_id || adminState.callerPeerId;
+    await subscribeToActiveAlertLifecycle(normalizedCallId);
     await broadcastSignaling('call-accepted', {
         callId: normalizedCallId,
         acceptedBy: String(adminState.adminId),
@@ -543,6 +810,44 @@ async function validateCallerPeerPresence(callerPeerId, timeoutMs = 2500) {
             finish(false);
         }
     });
+}
+
+async function waitForCallerPeerPresence(callerPeerId, { attempts = 4, retryDelayMs = 250 } = {}) {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        console.log('[PeerJS] Checking caller registration:', { callerPeerId, attempt, attempts });
+        if (await validateCallerPeerPresence(callerPeerId, 750)) {
+            console.log('[PeerJS] Caller is registered on this signaling server:', callerPeerId);
+            return true;
+        }
+        if (attempt < attempts) {
+            await new Promise(resolve => window.setTimeout(resolve, retryDelayMs));
+        }
+    }
+    return false;
+}
+
+async function refreshCurrentIncomingAlert(callId) {
+    if (!window.supabaseClient || !callId) return adminState.incomingAlert;
+    const { data, error } = await window.supabaseClient
+        .from('emergency_alerts')
+        .select('*')
+        .eq('id', callId)
+        .maybeSingle();
+    if (error) {
+        console.warn('[Answer] Could not refresh current alert before PeerJS lookup:', error);
+        return adminState.incomingAlert;
+    }
+    if (!data) throw new Error(`Emergency call ${callId} no longer exists`);
+    if (isEndedEmergencyAlert(data)) throw new Error(`Emergency call ${callId} already ended`);
+    const handledByAdminId = getAlertHandlerAdminId(data);
+    if (handledByAdminId != null && String(handledByAdminId) !== String(adminState.adminId || '')) {
+        handleCallAcceptedBroadcast(String(callId), String(handledByAdminId));
+        throw new Error(`Emergency call ${callId} was answered by another admin`);
+    }
+    adminState.incomingAlert = data;
+    adminState.callerPeerId = data.caller_peer_id || data.peer_id || adminState.callerPeerId;
+    console.log('[Answer] Refreshed caller PeerJS ID:', adminState.callerPeerId);
+    return data;
 }
 
 async function restoreGenuinelyActiveIncomingCall() {
@@ -593,6 +898,7 @@ async function initializeAdminPeer() {
         installPeerCallHandlers(peer); // Listener exists before this ID is advertised.
 
         peer.on('open', async (openPeerId) => {
+            adminState.peerReady = true;
             console.log('[PeerJS] Admin peer open:', openPeerId);
             try {
                 const session = await registerAdminSession(openPeerId);
@@ -607,6 +913,7 @@ async function initializeAdminPeer() {
         });
 
         peer.on('disconnected', () => {
+            adminState.peerReady = false;
             console.warn('[PeerJS] Admin peer disconnected:', peer.id);
             removeAdvertisedPeerId(peer.id, 'disconnected').catch(() => {});
             try { peer.destroy(); } catch (_) { /* ignore */ }
@@ -614,6 +921,7 @@ async function initializeAdminPeer() {
             schedulePeerReinitialization('disconnected');
         });
         peer.on('close', () => {
+            adminState.peerReady = false;
             console.warn('[PeerJS] Admin peer closed:', peer.id);
             if (!adminState.isDestroyed) {
                 removeAdvertisedPeerId(peer.id, 'closed').catch(() => {});
@@ -622,10 +930,17 @@ async function initializeAdminPeer() {
             }
         });
         peer.on('error', (error) => {
+            const signalingFailure = ['network', 'server-error', 'socket-error', 'socket-closed', 'disconnected'].includes(error?.type);
+            if (signalingFailure) adminState.peerReady = false;
             console.error('[PeerJS] Admin peer error:', { type: error?.type, message: error?.message, peerId: peer.id, online: !peer.destroyed });
             logPeerRegistration(peer.id, `PeerJS error: ${error?.type || 'unknown'}`).catch(() => {});
             if (error?.type === 'unavailable-id') {
                 removeAdvertisedPeerId(peer.id, 'unavailable-id').catch(() => {});
+            }
+            if (signalingFailure && !adminState.isDestroyed) {
+                try { peer.destroy(); } catch (_) { /* ignore */ }
+                if (adminState.peer === peer) adminState.peer = null;
+                schedulePeerReinitialization(`PeerJS ${error.type}`);
             }
         });
         peer.on('connection', (connection) => {
@@ -801,9 +1116,9 @@ function sanitizeHandleCallEndedBroadcast(payload) {
     const data = getBroadcastData(payload);
     const callId = typeof data.callId === 'string' ? data.callId : null;
     if (!callId) return;
-    if (adminState.activeAlertId === callId && typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(callId);
+    if (String(adminState.activeAlertId || '') === callId && typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(callId);
     const activeCallId = adminState.activeCallRecordId || adminState.incomingCallId;
-    if (activeCallId !== callId) return;
+    if (String(activeCallId || '') !== callId) return;
     handleCallEndedBroadcast(callId);
 }
 
@@ -838,11 +1153,13 @@ async function createPeerConnection() {
         }
         adminState.remoteStream.addTrack(e.track);
         if (dom.remoteAudio && dom.remoteAudio.srcObject !== adminState.remoteStream) {
-            dom.remoteAudio.srcObject = adminState.remoteStream;
+            attachAndPlayRemoteAudio(adminState.remoteStream);
             console.log('[WebRTC] Remote stream attached');
         }
         if (adminState.callState !== CALL_STATES.CONNECTED) {
+            clearMediaConnectionTimeout();
             transitionTo(CALL_STATES.CONNECTED, 'remote track received');
+            startCallTimer();
             updateClaimedAlertStatus('ongoing').catch(() => {});
             if (isDashboard()) {
                 hide(dom.connectingState);
@@ -880,7 +1197,10 @@ async function createPeerConnection() {
         const state = adminState.pc ? adminState.pc.connectionState : 'null';
         console.log('[pc] connection state:', state);
         if (state === 'connected') {
+            clearDisconnectRecoveryTimer();
+            clearMediaConnectionTimeout();
             transitionTo(CALL_STATES.CONNECTED, 'peer connected');
+            startCallTimer();
             updateClaimedAlertStatus('ongoing').catch(() => {});
             if (isDashboard()) {
                 hide(dom.connectingState);
@@ -888,9 +1208,18 @@ async function createPeerConnection() {
                 setStatus('Call active');
             }
             console.log('[Admin Call] Call connected');
-        } else if (!adminState.isCleaningUp && (state === 'failed' || state === 'disconnected' || state === 'closed')) {
+        } else if (!adminState.isCleaningUp && state === 'disconnected') {
+            clearDisconnectRecoveryTimer();
+            adminState.disconnectRecoveryTimer = window.setTimeout(() => {
+                adminState.disconnectRecoveryTimer = null;
+                if (!adminState.isCleaningUp && adminState.pc?.connectionState === 'disconnected') {
+                    console.warn('[pc] disconnected state did not recover');
+                    endCurrentCall('rtc-disconnected', { notifyRemote: true, updateStatus: true });
+                }
+            }, 3000);
+        } else if (!adminState.isCleaningUp && (state === 'failed' || state === 'closed')) {
             console.warn('[pc] connection failed or closed:', state);
-            endCall();
+            endCurrentCall(`rtc-${state}`, { notifyRemote: true, updateStatus: true });
         }
     };
 }
@@ -1038,22 +1367,14 @@ async function answerCall() {
     }
 
     adminState.currentCall = { open: true };
+    startMediaConnectionTimeout(callId);
 
     startStatsPolling();
-
-    adminState.seconds = 0;
-    clearInterval(adminState.timerInterval);
-    adminState.timerInterval = setInterval(() => {
-        adminState.seconds++;
-        const m = String(Math.floor(adminState.seconds / 60)).padStart(2, '0');
-        const s = String(adminState.seconds % 60).padStart(2, '0');
-        if (dom.callTimer) dom.callTimer.textContent = `${m}:${s}`;
-    }, 1000);
 
     console.log('[WebRTC] Answered call:', callId);
     } catch (err) {
         console.error(`[Admin Call] Answer failed: ${err?.message || err}`, err);
-        cleanupCall();
+        await endCurrentCall('webrtc-answer-failed', { notifyRemote: true, updateStatus: Boolean(adminState.claimedCallId) });
     } finally {
         adminState.answerInProgress = false;
     }
@@ -1067,6 +1388,8 @@ async function answerPeerJsCall() {
     try {
         const callId = String(adminState.incomingCallId || adminState.activeAlertId || '');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        console.log('[WebRTC] Local stream ready');
+        console.log('[WebRTC] Audio tracks:', stream.getAudioTracks().length);
         adminState.localStream = stream;
         if (!await claimIncomingCall(callId)) {
             stream.getTracks().forEach(track => track.stop());
@@ -1086,9 +1409,12 @@ async function answerPeerJsCall() {
         setStatus('Connecting...');
 
         call.on('stream', (remoteStream) => {
-            console.log('[Admin Call] Remote stream received');
-            if (dom.remoteAudio) dom.remoteAudio.srcObject = remoteStream;
+            console.log('[WebRTC] Remote stream received');
+            clearMediaConnectionTimeout();
+            adminState.remoteStream = remoteStream;
+            attachAndPlayRemoteAudio(remoteStream);
             transitionTo(CALL_STATES.CONNECTED, 'PeerJS remote stream received');
+            startCallTimer();
             updateClaimedAlertStatus('ongoing').catch(() => {});
             hide(dom.connectingState);
             show(dom.activeState);
@@ -1096,12 +1422,13 @@ async function answerPeerJsCall() {
             console.log('[Admin Call] Call connected');
         });
         call.answer(stream);
+        startMediaConnectionTimeout(callId, call);
         showCallerLocationForClaimedCall();
-        window.setTimeout(() => attachPeerConnectionDiagnostics(call), 0);
+        attachPeerConnectionDiagnosticsWhenReady(call);
         console.log('[PeerJS] Admin answered incoming call:', { callerPeerId: call.peer, adminPeerId: adminState.peerId });
     } catch (error) {
         console.error(`[Admin Call] Answer failed: ${error?.message || error}`, error);
-        cleanupCall();
+        await endCurrentCall('peerjs-answer-failed', { notifyRemote: true, updateStatus: Boolean(adminState.claimedCallId) });
     } finally {
         adminState.answerInProgress = false;
     }
@@ -1114,6 +1441,14 @@ async function startClaimedPeerJsCall(stream) {
         throw new Error('The claimed caller PeerJS identity is unavailable');
     }
 
+    console.log('[WebRTC] Current call ID:', callId);
+    console.log('[WebRTC] Caller peer ID:', callerPeerId);
+    console.log('[WebRTC] Admin peer ready:', adminState.peerReady);
+    console.log('[WebRTC] Peer open:', adminState.peer?.open);
+    console.log('[WebRTC] Peer destroyed:', adminState.peer?.destroyed);
+    console.log('[WebRTC] Admin peer ID:', adminState.peer?.id);
+    console.log('[WebRTC] Starting connection...');
+    console.log('[WebRTC] Calling peer:', callerPeerId);
     console.log('[Admin Call] Calling claimed caller peer:', { callId, callerPeerId });
     const call = adminState.peer.call(callerPeerId, stream, {
         metadata: {
@@ -1128,10 +1463,12 @@ async function startClaimedPeerJsCall(stream) {
     adminState.pendingIncomingUi = false;
 
     call.on('stream', (remoteStream) => {
-        console.log('[Admin Call] Remote stream received from claimed caller');
+        console.log('[WebRTC] Remote stream received');
+        clearMediaConnectionTimeout();
         adminState.remoteStream = remoteStream;
-        if (dom.remoteAudio) dom.remoteAudio.srcObject = remoteStream;
+        attachAndPlayRemoteAudio(remoteStream);
         transitionTo(CALL_STATES.CONNECTED, 'claimed PeerJS caller connected');
+        startCallTimer();
         updateClaimedAlertStatus('ongoing').catch(() => {});
         hide(dom.connectingState);
         show(dom.activeState);
@@ -1139,14 +1476,19 @@ async function startClaimedPeerJsCall(stream) {
         startStatsPolling();
     });
     call.on('close', () => {
-        if (adminState.currentCall === call) cleanupCall();
+        if (adminState.currentCall === call) {
+            endCurrentCall('peerjs-remote-close', { notifyRemote: true, updateStatus: true });
+        }
     });
     call.on('error', (error) => {
         console.error('[Admin Call] Claimed caller PeerJS error:', error);
-        if (adminState.currentCall === call) cleanupCall();
+        if (adminState.currentCall === call) {
+            endCurrentCall('peerjs-error', { notifyRemote: true, updateStatus: true });
+        }
     });
-    window.setTimeout(() => attachPeerConnectionDiagnostics(call), 0);
-    console.log('[Admin Call] Waiting for claimed caller to answer PeerJS call');
+    attachPeerConnectionDiagnosticsWhenReady(call);
+    startMediaConnectionTimeout(callId, call);
+    console.log('[WebRTC] Waiting for remote stream');
 }
 
 async function startCall() {
@@ -1191,15 +1533,6 @@ async function startCall() {
         }
 
         startStatsPolling();
-
-        adminState.seconds = 0;
-        clearInterval(adminState.timerInterval);
-        adminState.timerInterval = setInterval(() => {
-            adminState.seconds++;
-            const m = String(Math.floor(adminState.seconds / 60)).padStart(2, '0');
-            const s = String(adminState.seconds % 60).padStart(2, '0');
-            if (dom.callTimer) dom.callTimer.textContent = `${m}:${s}`;
-        }, 1000);
 
         console.log('[WebRTC] Call initiated:', callId);
     } catch (err) {
@@ -1316,17 +1649,18 @@ function handleCallAcceptedBroadcast(callId, acceptedBy) {
 function handleCallEndedBroadcast(callId) {
     console.log('[WebRTC] Call ended broadcast received:', callId);
     const activeCallId = adminState.activeCallRecordId || adminState.incomingCallId;
-    if (activeCallId !== callId) return;
+    if (String(activeCallId || '') !== String(callId)) return;
     if (typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(adminState.activeAlertId || callId);
     adminState.claimedAlertIds.delete(String(adminState.activeAlertId || callId));
-    cleanupCall();
+    console.log('[Admin Call] Remote ended:', callId);
+    endCurrentCall('remote-broadcast', { notifyRemote: false, updateStatus: false });
 }
 
 // =========================================================
 // CALLEE ACTIONS
 // =========================================================
 async function acceptCall() {
-    console.log('[Call] Answer clicked');
+    console.log('[Answer] Answer button clicked');
     console.log('[Call] Current alert:', adminState.incomingAlert);
     console.log('[Call] Caller peer ID:', adminState.incomingAlert?.caller_peer_id || adminState.incomingAlert?.peer_id || adminState.callerPeerId);
     console.log('[Call Debug] Answer state:', { state: adminState.callState, hasPeerCall: Boolean(adminState.incomingPeerCall), hasOffer: Boolean(adminState.pendingOffer), alertId: adminState.activeAlertId });
@@ -1336,15 +1670,43 @@ async function acceptCall() {
     if (dom.answerCallButton) dom.answerCallButton.disabled = true;
     adminState.answerRequested = true;
     const callId = String(adminState.incomingCallId || adminState.activeAlertId || '');
+    console.log('[Answer] Claiming call:', callId);
     let claimedCallerStream = null;
     try {
+        if (!adminState.peerReady || !adminState.peer?.open || adminState.peer.destroyed) {
+            console.warn('[Admin Call] Answer waiting for PeerJS readiness:', callId);
+            setStatus('Connecting to call service...');
+            if (!await waitForPeerReady()) throw new Error('PeerJS did not become ready in time');
+            console.log('[Admin Call] PeerJS became ready:', adminState.peerId);
+        }
+        const latestAlert = await refreshCurrentIncomingAlert(callId);
+        const currentCallerPeerId = String(
+            latestAlert?.caller_peer_id
+            || latestAlert?.peer_id
+            || adminState.callerPeerId
+            || ''
+        );
+        if (!currentCallerPeerId) throw new Error('The current call has no caller PeerJS ID');
+        if (currentCallerPeerId === String(adminState.peerId || '')) {
+            throw new Error('Caller PeerJS ID incorrectly matches the admin PeerJS ID');
+        }
+        setStatus('Locating caller...');
+        if (!await waitForCallerPeerPresence(currentCallerPeerId)) {
+            throw new Error(`Caller peer ${currentCallerPeerId} is not registered on this PeerJS server`);
+        }
+        // Refresh from the current alert after the presence check; never reuse
+        // a previous session's peer ID merely because the same phone called.
+        adminState.callerPeerId = currentCallerPeerId;
         const shouldCallClaimedCaller = !adminState.incomingPeerCall
             && !adminState.pendingOffer
             && Boolean(adminState.callerPeerId);
         // Obtain microphone permission before locking the database record. A
         // denied permission must not strand a call as assigned to this admin.
         if (shouldCallClaimedCaller) {
+            console.log('[WebRTC] Requesting local microphone');
             claimedCallerStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            console.log('[WebRTC] Local microphone ready');
+            console.log('[WebRTC] Audio tracks:', claimedCallerStream.getAudioTracks().length);
         }
         if (!await claimIncomingCall(callId)) return;
         console.log('[Call] Call successfully claimed');
@@ -1367,47 +1729,129 @@ async function acceptCall() {
         await answerCall();
     } catch (error) {
         console.error('[Admin Call] Could not claim incoming call:', error);
-        setStatus('Unable to answer call');
-        cleanupCall();
+        if (adminState.claimedCallId) {
+            await endCurrentCall('connection-start-failed', { notifyRemote: true, updateStatus: true });
+            return;
+        }
+        if (!adminState.incomingCallId || !adminState.incomingAlert || /already ended/i.test(error?.message || '')) {
+            cleanupCall();
+            return;
+        }
+        // A database/RPC failure means nobody claimed the call. Keep this
+        // admin ringing so the call is not mistaken for an ended call and the
+        // Answer button can be retried after the server-side issue is fixed.
+        adminState.answerRequested = false;
+        transitionTo(CALL_STATES.RINGING, 'claim failed; incoming call retained');
+        adminState.pendingIncomingUi = true;
+        ensureIncomingCallUI();
+        setStatus('Unable to claim call — please retry');
     } finally {
         if (claimedCallerStream) claimedCallerStream.getTracks().forEach(track => track.stop());
         if (!adminState.claimedCallId && dom.answerCallButton) dom.answerCallButton.disabled = false;
     }
 }
 
-function rejectCall() {
-    const callId = adminState.activeCallRecordId || adminState.incomingCallId;
-    if (callId) adminState.declinedAlertIds.add(String(adminState.activeAlertId || callId));
-    if (typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(adminState.activeAlertId || callId);
-    console.log('[Admin Call] Incoming call declined locally; other available admins remain ringing:', callId);
-    cleanupCall();
+async function rejectCall() {
+    console.log('[Admin Call] Cancel button clicked:', {
+        activeAlertId: adminState.activeAlertId,
+        incomingCallId: adminState.incomingCallId,
+        adminId: adminState.adminId
+    });
+    const callId = String(adminState.activeAlertId || adminState.activeCallRecordId || adminState.incomingCallId || '');
+    if (!callId || !window.supabaseClient || !adminState.adminId) {
+        console.error('[Admin Call] Cancel prerequisites missing:', { callId, hasSupabase: Boolean(window.supabaseClient), adminId: adminState.adminId });
+        if (dom.incomingTitle) dom.incomingTitle.textContent = 'Unable to cancel call';
+        return;
+    }
+    if (dom.cancelCallButton) dom.cancelCallButton.disabled = true;
+    if (dom.incomingTitle) dom.incomingTitle.textContent = 'Cancelling call...';
+    setStatus('Cancelling call...');
+    console.log('[Admin Call] Cancelling incoming call:', { callId, adminId: adminState.adminId });
+    try {
+        const { data, error } = await window.supabaseClient.rpc('cancel_emergency_call', {
+            p_alert_id: Number(callId),
+            p_admin_id: Number(adminState.adminId),
+            p_admin_peer_id: String(adminState.peerId)
+        });
+        if (error?.code === 'PGRST202') {
+            throw new Error('Database setup required: run supabase_atomic_call_claim.sql in the Supabase SQL Editor');
+        }
+        if (error) throw error;
+        const cancelledRecord = Array.isArray(data) ? data[0] : data;
+        if (!cancelledRecord) throw new Error('This call was already handled or is no longer ringing');
+        adminState.declinedAlertIds.add(callId);
+        await broadcastSignaling('call-ended', { callId, from: adminState.peerId, reason: 'admin-cancelled' });
+        console.log('[Admin Call] Cancellation recorded:', { callId, adminId: adminState.adminId, adminName: cancelledRecord.answered_by_admin_fullname });
+        cleanupCall();
+    } catch (error) {
+        console.error('[Admin Call] Could not cancel incoming call:', error);
+        if (dom.incomingTitle) dom.incomingTitle.textContent = 'Unable to cancel - please retry';
+        if (dom.cancelCallButton) dom.cancelCallButton.disabled = false;
+        setStatus('Unable to cancel call — please retry');
+    }
 }
 
 function endCall() {
-    const callId = adminState.activeCallRecordId || adminState.incomingCallId;
-    if (callId) {
-        broadcastSignaling('call-ended', {
-            callId,
-            from: adminState.peerId
-        }).catch(() => {});
+    return endCurrentCall('admin-ended', { notifyRemote: true, updateStatus: true });
+}
+
+async function endCurrentCall(reason, { notifyRemote = false, updateStatus = false } = {}) {
+    const callId = String(adminState.activeAlertId || adminState.activeCallRecordId || adminState.incomingCallId || adminState.claimedCallId || '');
+    if (!callId || adminState.isEndingCall || adminState.isCleaningUp) return;
+    adminState.isEndingCall = true;
+    console.log('[Admin Call] Active call:', callId);
+    console.log(reason === 'admin-ended' ? '[Admin Call] Local end:' : '[Admin Call] Ending:', callId, reason);
+    const synchronizationTasks = [];
+    try {
+        if (notifyRemote) {
+            synchronizationTasks.push(broadcastSignaling('call-ended', {
+                callId,
+                from: adminState.peerId,
+                reason
+            }));
+        }
+        if (updateStatus && adminState.claimedCallId) {
+            synchronizationTasks.push(markClaimedCallEnded(callId));
+        }
+        // Local teardown must never wait for the network. This makes the admin
+        // ready for the next distinct emergency_alerts.id immediately.
+        cleanupCall({ finishAlert: false });
+        const results = await Promise.allSettled(synchronizationTasks);
+        results.forEach(result => {
+            if (result.status === 'rejected') {
+                console.error('[Admin Call] End synchronization failed:', { callId, reason, error: result.reason });
+            }
+        });
+    } catch (error) {
+        console.error('[Admin Call] End lifecycle failed:', { callId, reason, error });
+        cleanupCall({ finishAlert: false });
     }
-    if (typeof window.clearCallerLocationPing === 'function') window.clearCallerLocationPing(adminState.activeAlertId || callId);
-    cleanupCall({ finishAlert: true });
 }
 
 function cleanupCall({ finishAlert = false } = {}) {
+    console.trace('[Call Cleanup] cleanupCall() executed', {
+        finishAlert,
+        callState: adminState.callState,
+        activeAlertId: adminState.activeAlertId,
+        claimedCallId: adminState.claimedCallId
+    });
     if (adminState.isCleaningUp) return;
     adminState.isCleaningUp = true;
+    unsubscribeActiveAlertLifecycle().catch(() => {});
+    clearMediaConnectionTimeout();
+    clearDisconnectRecoveryTimer();
+    stopCallTimer();
     const claimedAlertId = adminState.claimedCallId || adminState.activeAlertId;
     const visibleAlertId = adminState.activeAlertId || adminState.incomingCallId || adminState.claimedCallId;
     if (visibleAlertId && typeof window.clearCallerLocationPing === 'function') {
         window.clearCallerLocationPing(visibleAlertId);
     }
-    if ((finishAlert || adminState.claimedCallId) && claimedAlertId) {
+    if (finishAlert && claimedAlertId) {
         updateClaimedAlertStatus('ended', claimedAlertId).catch(error => console.error('[Call] Failed to finish alert:', error));
     }
     stopRingtone();
     if (adminState.pc) {
+        console.log('[Admin Call] Closing WebRTC peer connection');
         adminState.pc.close();
         adminState.pc = null;
     }
@@ -1417,6 +1861,7 @@ function cleanupCall({ finishAlert = false } = {}) {
     }
     const peerCall = adminState.incomingPeerCall || adminState.currentCall;
     if (peerCall && typeof peerCall.close === 'function') {
+        console.log('[Admin Call] Closing PeerJS media connection');
         try { peerCall.close(); } catch (_) { /* ignore */ }
     }
     adminState.incomingPeerCall = null;
@@ -1435,6 +1880,16 @@ function cleanupCall({ finishAlert = false } = {}) {
     stopStatsPolling();
     Promise.resolve(resetUI()).finally(() => {
         adminState.isCleaningUp = false;
+        adminState.isEndingCall = false;
+        console.log('[Admin Call] Cleanup complete');
+        console.log('[Cleanup] Call state reset:', {
+            currentAlert: adminState.incomingAlert,
+            activeCall: adminState.currentCall,
+            isAnswering: adminState.answerInProgress,
+            isEndingCall: adminState.isEndingCall,
+            peerReady: adminState.peerReady && Boolean(adminState.peer?.open),
+            answerEnabled: !dom.answerCallButton?.disabled
+        });
     });
 }
 
@@ -1494,13 +1949,14 @@ function restoreIncomingButtons() {
             <span class="text-green-300 text-xs">Accept</span>
         </div>
         <div class="flex flex-col items-center gap-1">
-            <button onclick="rejectCall()" class="w-11 h-11 rounded-full bg-red-500 hover:bg-red-400 active:scale-95 flex items-center justify-center transition-transform">
+            <button id="cancelCallButton" type="button" class="relative z-10 w-11 h-11 rounded-full bg-red-500 hover:bg-red-400 active:scale-95 flex items-center justify-center transition-transform">
                 <svg class="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.1.3-4.5.7v3.1c0 .4-.2.8-.5 1-.8.5-1.6 1.1-2.2 1.8-.3.3-.8.3-1.1 0L1.1 13c-.3-.3-.3-.8 0-1.1C3.4 9.4 7.5 8 12 8s8.6 1.4 10.9 3.9c.3.3.3.8 0 1.1l-2.6 2.6c-.3.3-.8.3-1.1 0-.7-.7-1.4-1.3-2.2-1.8-.3-.2-.5-.6-.5-1V9.7C15.1 9.3 13.6 9 12 9z"/></svg>
             </button>
             <span class="text-red-300 text-xs">Reject</span>
         </div>
     `;
     bindAnswerButton();
+    bindCancelButton();
 }
 
 // =========================================================
@@ -1706,7 +2162,7 @@ class TimelineGraphView {
 // UI RESET & RESOURCE CLEANUP
 // =========================================================
 async function resetUI() {
-    clearInterval(adminState.timerInterval);
+    stopCallTimer();
     if (adminState.localStream) {
         adminState.localStream.getTracks().forEach(track => track.stop());
         adminState.localStream = null;
@@ -1715,7 +2171,6 @@ async function resetUI() {
         dom.remoteAudio.srcObject.getTracks().forEach(track => track.stop());
         dom.remoteAudio.srcObject = null;
     }
-    if (dom.callTimer) dom.callTimer.textContent = '00:00';
 
     if (adminState.alreadyAnsweredTimeout) {
         clearTimeout(adminState.alreadyAnsweredTimeout);
@@ -1736,6 +2191,7 @@ async function resetUI() {
     adminState.callClaims.clear();
     adminState.answerInProgress = false;
     adminState.answerRequested = false;
+    enableAnswerButton();
 
     if (adminState.bitrateGraph) {
         adminState.bitrateGraph.dataSeries = [];
@@ -1757,7 +2213,6 @@ async function resetUI() {
 
     transitionTo(CALL_STATES.IDLE, 'UI reset');
     if (dom.incomingTitle) dom.incomingTitle.textContent = 'Incoming call';
-
     if (!adminState.isDestroyed && adminState.adminId) {
         const stillLoggedIn = sessionStorage.getItem('adminLoggedIn') === 'true';
         if (stillLoggedIn) {
@@ -1770,6 +2225,7 @@ async function resetUI() {
 
 function destroyPeer() {
     adminState.isDestroyed = true;
+    adminState.peerReady = false;
     window.clearTimeout(adminState.peerReconnectTimer);
     adminState.peerReconnectTimer = null;
     stopRingtone();
@@ -1791,6 +2247,7 @@ function destroyPeer() {
         window.supabaseClient.removeChannel(adminState.dispatchChannel).catch(() => {});
         adminState.dispatchChannel = null;
     }
+    unsubscribeActiveAlertLifecycle().catch(() => {});
     adminState.remoteStream = null;
     adminState.currentCall = null;
     adminState.incomingCallId = null;

@@ -272,7 +272,13 @@ function showCallerLocationPing(alertId, alert, { recenter = false } = {}) {
         console.log('[Caller Location] location.png loaded');
         marker = L.marker([lat, lng], { icon: callerLocationIcon }).addTo(callerLocationLayer);
         activeCallerMarkers.set(id, marker);
-        marker.bindPopup(`<strong>Incoming Emergency Call</strong><br>Caller location${alert?.caller_phone ? `<br>${escapeMapHtml(alert.caller_phone)}` : ''}${alert?.created_at ? `<br>${escapeMapHtml(new Date(alert.created_at).toLocaleString())}` : ''}<br><button type="button" onclick="dismissCallerLocationPing('${escapeMapHtml(id)}')" style="margin-top:8px;padding:4px 8px;border:0;border-radius:4px;background:#e2e8f0;color:#334155;font-weight:700;cursor:pointer">Close ping</button>`).openPopup();
+        const popupContent = `<div style="font-size:12px;color:#334155"><strong style="display:block;margin-bottom:4px;font-size:13px;color:#0f172a">Incoming Emergency Call</strong><span>Caller location</span>${alert?.created_at ? `<span style="display:block;margin-top:2px;color:#64748b">${escapeMapHtml(new Date(alert.created_at).toLocaleString())}</span>` : ''}<button type="button" onclick="dismissCallerLocationPing('${escapeMapHtml(id)}')" style="width:100%;margin-top:8px;padding:6px 8px;border:0;border-radius:6px;background:#e2e8f0;color:#334155;font-size:12px;font-weight:700;cursor:pointer">Close ping</button></div>`;
+        marker.bindPopup(popupContent, {
+            className: 'caller-location-popup',
+            minWidth: 150,
+            maxWidth: 180,
+            autoPanPadding: [24, 24]
+        }).openPopup();
         console.log('[Caller Location] Marker added to Dashboard:', id);
     }
     if (recenter) map.setView([lat, lng], 16);

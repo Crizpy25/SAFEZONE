@@ -36,6 +36,16 @@
             background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(255,255,255,0.95));
             box-shadow: 0 12px 28px rgba(37, 99, 235, 0.16);
         }
+        .caller-location-popup .leaflet-popup-content {
+            width: min(180px, calc(100vw - 72px)) !important;
+            max-width: min(180px, calc(100vw - 72px));
+            margin: 10px 12px;
+            overflow-wrap: anywhere;
+            line-height: 1.35;
+        }
+        .caller-location-popup .leaflet-popup-content-wrapper {
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -94,7 +104,7 @@
                             <span class="text-green-300 text-xs">Accept</span>
                         </div>
                         <div class="flex flex-col items-center gap-1">
-                            <button onclick="rejectCall()" class="w-11 h-11 rounded-full bg-red-500 hover:bg-red-400 active:scale-95 flex items-center justify-center transition-transform">
+                            <button id="cancelCallButton" type="button" class="relative z-10 w-11 h-11 rounded-full bg-red-500 hover:bg-red-400 active:scale-95 flex items-center justify-center transition-transform">
                                 <svg class="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.1.3-4.5.7v3.1c0 .4-.2.8-.5 1-.8.5-1.6 1.1-2.2 1.8-.3.3-.8.3-1.1 0L1.1 13c-.3-.3-.3-.8 0-1.1C3.4 9.4 7.5 8 12 8s8.6 1.4 10.9 3.9c.3.3.3.8 0 1.1l-2.6 2.6c-.3.3-.8.3-1.1 0-.7-.7-1.4-1.3-2.2-1.8-.3-.2-.5-.6-.5-1V9.7C15.1 9.3 13.6 9 12 9z"/></svg>
                             </button>
                             <span class="text-red-300 text-xs">Reject</span>
@@ -237,7 +247,7 @@
                                     <path d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                 </svg>
                             </span>
-                            <input id="searchInput" type="search" placeholder="Search reports..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                            <input id="searchInput" type="search" placeholder="Search reports descriptions..." class="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
                         </label>
                     </div>
                     <div id="output" class="text-slate-700">
@@ -376,16 +386,14 @@
         </div>
 
         <div id="view-analytics" class="hidden">
-            <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
+            <div class="flex min-h-[calc(100vh-80px)] flex-col rounded-xl border border-white/70 bg-slate-50/95 p-5 shadow-2xl shadow-black/10 backdrop-blur sm:p-6 lg:p-8">
+                <div class="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report tracking</p>
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">System Analytics</h1>
+                        <p id="analyticsSummary" class="mt-1 text-sm font-medium text-slate-500">Loading analytics...</p>
                     </div>
-                    <p id="analyticsSummary" class="text-sm font-medium text-slate-500">Loading analytics...</p>
-                </div>
-                <section class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+                    <div class="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                         <div class="flex flex-col gap-1">
                             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Time range</span>
                             <select id="analyticsRange" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All Dates</option><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select>
@@ -395,8 +403,31 @@
                             <select id="analyticsStatus" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All</option><option value="active">Active</option><option value="resolved">Resolved</option><option value="cancelled">Cancelled</option></select>
                         </div>
                     </div>
-                    <div id="analyticsKpis" class="grid grid-cols-1 gap-4 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 xl:grid-cols-4"></div>
-                    <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Incident Type</th><th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Reports Sent</th><th class="min-w-72 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Volume Share</th><th class="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
+                </div>
+
+                <div id="analyticsKpis" class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+
+                <div class="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)]">
+                    <section class="flex min-h-[320px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div class="border-b border-slate-200 px-5 py-4">
+                            <h2 class="font-bold text-slate-900">Reports by Emergency Type</h2>
+                            <p class="text-xs text-slate-500">Select a category to view its reports</p>
+                        </div>
+                        <div class="flex-1 overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Incident Type</th><th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Reports</th><th class="min-w-52 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Volume Share</th><th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
+                    </section>
+
+                    <section class="flex min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="mb-5">
+                            <h2 class="font-bold text-slate-900">Reports by Status</h2>
+                            <p class="text-xs text-slate-500">Distribution for the selected time range</p>
+                        </div>
+                        <div id="analyticsStatusBreakdown" class="flex flex-1 flex-col justify-center gap-5"></div>
+                    </section>
+                </div>
+
+                <section class="mt-5 rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div class="border-b border-slate-200 px-5 py-3"><h2 class="font-bold text-slate-900">Operational Summary</h2></div>
+                    <div id="analyticsOperationalSummary" class="grid grid-cols-1 divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4"></div>
                 </section>
             </div>
         </div>
@@ -527,6 +558,40 @@
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-3 py-2 text-xs"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-3 py-2 text-xs"><div class="h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-3 py-2 text-right text-xs font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
         }
 
+        function renderAnalyticsDashboard(records, rangeRecords) {
+            const total = records.length;
+            const rangeTotal = rangeRecords.length;
+            const counts = records.reduce((result, record) => {
+                const category = analyticsCategory(record.category);
+                result[category] = (result[category] || 0) + 1;
+                return result;
+            }, {});
+            const types = Object.entries(counts).map(([name, count]) => ({ name, count, percent: total ? count / total * 100 : 0, style: analyticsPresentation[name] || analyticsPresentation.Other })).sort((a, b) => b.count - a.count);
+            const statusCounts = rangeRecords.reduce((result, record) => {
+                const status = normalizeReportStatus(record.status);
+                if (Object.prototype.hasOwnProperty.call(result, status)) result[status]++;
+                return result;
+            }, { ACTIVE: 0, RESPONDING: 0, RESOLVED: 0, CANCELLED: 0 });
+            const selectedStatus = getAnalyticsStatusFilter();
+            document.getElementById('analyticsSummary').textContent = selectedStatus === 'all' ? `${rangeTotal.toLocaleString()} reports received across all categories` : `${total.toLocaleString()} ${selectedStatus} reports in the selected period`;
+
+            const kpis = [['Total Reports', rangeTotal, 'All reports in this period', 'bg-blue-50 text-blue-700'], ['Active Reports', statusCounts.ACTIVE, 'Awaiting or receiving action', 'bg-amber-50 text-amber-700'], ['Resolved Reports', statusCounts.RESOLVED, 'Successfully completed', 'bg-emerald-50 text-emerald-700'], ['Cancelled Reports', statusCounts.CANCELLED, 'Closed without resolution', 'bg-slate-100 text-slate-700']];
+            document.getElementById('analyticsKpis').innerHTML = kpis.map(([label, value, note, color]) => `<article class="flex min-h-28 items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-2 text-3xl font-bold text-slate-900">${Number(value).toLocaleString()}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></div><span class="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold ${color}">${rangeTotal ? Math.round(value / rangeTotal * 100) : 0}%</span></article>`).join('');
+
+            document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-1 text-xs font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-16 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
+
+            const statusDisplay = [['Active', statusCounts.ACTIVE, 'bg-sky-500', 'text-sky-700'], ['Resolved', statusCounts.RESOLVED, 'bg-emerald-500', 'text-emerald-700'], ['Cancelled', statusCounts.CANCELLED, 'bg-slate-500', 'text-slate-700']];
+            document.getElementById('analyticsStatusBreakdown').innerHTML = statusDisplay.map(([label, count, bar, text]) => { const percent = rangeTotal ? count / rangeTotal * 100 : 0; return `<div><div class="mb-2 flex items-center justify-between"><span class="text-sm font-semibold ${text}">${label}</span><span class="text-sm font-bold text-slate-800">${count.toLocaleString()} <span class="font-medium text-slate-400">(${percent.toFixed(1)}%)</span></span></div><div class="h-3 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full ${bar}" style="width:${percent}%"></div></div></div>`; }).join('');
+
+            const hours = records.reduce((buckets, record) => { const date = new Date(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
+            const peak = hours.indexOf(Math.max(...hours));
+            const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
+            const validDates = records.map(record => new Date(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
+            const top = types[0];
+            const operational = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports in current view` : 'No reports found'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Latest Report', validDates[0] ? `${formatDate(validDates[0])} ${formatTime(validDates[0])}` : '—', 'Most recent matching report'], ['Tracked Categories', types.length, 'Emergency types in current view']];
+            document.getElementById('analyticsOperationalSummary').innerHTML = operational.map(([label, value, note]) => `<article class="p-5"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-lg font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
+        }
+
         function getAnalyticsStatusFilter() {
             const el = document.getElementById('analyticsStatus');
             if (!el) return 'all';
@@ -550,10 +615,12 @@
             let query = window.supabaseClient.from('incidents').select('category, created_at, status');
             const start = analyticsStartDate(document.getElementById('analyticsRange').value);
             if (start) query = query.gte('created_at', start.toISOString());
-            query = applyAnalyticsStatusFilter(query);
             const { data, error } = await query;
             if (error) { summary.textContent = 'Unable to load analytics.'; rows.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-red-500">${escapeHtml(error.message)}</td></tr>`; return; }
-            renderAnalyticsRows(Array.isArray(data) ? data : []);
+            const rangeRecords = Array.isArray(data) ? data : [];
+            const selectedStatus = getAnalyticsStatusFilter();
+            const filteredRecords = selectedStatus === 'all' ? rangeRecords : rangeRecords.filter(record => normalizeReportStatus(record.status).toLowerCase() === selectedStatus);
+            renderAnalyticsDashboard(filteredRecords, rangeRecords);
         }
 
         function openAnalyticsDrillDownFromEvent(event) {
@@ -1350,7 +1417,10 @@
 
         function closeCallRecordDetails() {
             const modal = document.getElementById('callRecordDetailModal');
-            if (modal) modal.classList.add('hidden');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
         function openCallRecordDetails(index) {
@@ -1369,7 +1439,7 @@
                 ['Latitude', coordinates ? coordinates.latitude : (record.latitude ?? record.lat)], ['Longitude', coordinates ? coordinates.longitude : (record.longitude ?? record.long ?? record.lng)],
                 ['Description', record.description || record.message], ['Handled by', record.handled_by]
             ].filter(([, value]) => value !== undefined && value !== null && value !== '');
-            const shownKeys = new Set(['id', 'device_id', 'deviceId', 'reporter_device_id', 'reporter_device', 'emergency_type', 'type', 'category', 'status', 'created_at', 'received_at', 'timestamp', 'latitude', 'longitude', 'description', 'message', 'handled_by']);
+            const shownKeys = new Set(['id', 'device_id', 'deviceId', 'reporter_device_id', 'reporter_device', 'emergency_type', 'type', 'category', 'status', 'created_at', 'received_at', 'timestamp', 'latitude', 'longitude', 'description', 'message', 'handled_by', 'caller_phone', 'callerPhone', 'phone', 'phone_number']);
             Object.entries(record).forEach(([key, value]) => {
                 if (!shownKeys.has(key) && value !== undefined && value !== null && value !== '') fields.push([key.replace(/_/g, ' '), typeof value === 'object' ? JSON.stringify(value) : value]);
             });
@@ -1377,6 +1447,7 @@
                 <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">${fields.map(([label, value]) => `<div class="rounded-lg bg-slate-50 p-3"><dt class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</dt><dd class="mt-1 break-words text-sm text-slate-800">${escapeHtml(value)}</dd></div>`).join('')}</dl>
                 <div><p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Emergency location</p><div id="callDetailMapMessage" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"></div><div id="callDetailMap" class="h-64 rounded-lg border border-slate-200"></div></div>`;
             modal.classList.remove('hidden');
+            modal.classList.add('flex');
 
             const mapEl = document.getElementById('callDetailMap');
             const messageEl = document.getElementById('callDetailMapMessage');
