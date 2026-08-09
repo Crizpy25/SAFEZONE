@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="auth.js"></script>
     <style>
@@ -87,7 +88,7 @@
                     <p class="text-white text-sm font-medium mb-3">Incoming call</p>
                     <div class="flex justify-center gap-4">
                         <div class="flex flex-col items-center gap-1">
-                            <button onclick="acceptCall()" class="w-11 h-11 rounded-full bg-green-500 hover:bg-green-400 active:scale-95 flex items-center justify-center transition-transform">
+                            <button id="answerCallButton" type="button" class="relative z-10 w-11 h-11 rounded-full bg-green-500 hover:bg-green-400 active:scale-95 flex items-center justify-center transition-transform">
                                 <svg class="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C11.4 21 3 12.6 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
                             </button>
                             <span class="text-green-300 text-xs">Accept</span>
@@ -99,6 +100,9 @@
                             <span class="text-red-300 text-xs">Reject</span>
                         </div>
                     </div>
+                </div>
+                <div id="connectingState" class="hidden">
+                    <p class="text-yellow-300 text-sm font-medium">Connecting...</p>
                 </div>
                 <div id="activeState" class="hidden">
                     <p class="text-green-300 text-sm font-medium mb-1">Call active</p>
@@ -212,9 +216,9 @@
                                 <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</span>
                                 <select id="statusFilter" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
                                     <option value="all">All</option>
-                                    <option value="Active">Active</option>
-                                    <option value="Resolved">Resolved</option>
-                                    <option value="Cancelled">Cancelled</option>
+                                    <option value="ACTIVE">Active</option>
+                                    <option value="RESOLVED">Resolved</option>
+                                    <option value="CANCELLED">Cancelled</option>
                                 </select>
                             </div>
                             <div class="flex flex-col gap-1">
@@ -810,7 +814,8 @@
         }
 
         function sortReportsNewestFirst(reports) {
-            const statusOrder = { Active: 0, Resolved: 1, Cancelled: 2 };
+            // Keep active work first, then completed work; newest first inside each group.
+            const statusOrder = { ACTIVE: 0, RESPONDING: 0, ASSIGNED: 0, RESOLVED: 1, CANCELLED: 2 };
             return [...reports].sort((a, b) => {
                 const aStatus = normalizeReportStatus(a.status);
                 const bStatus = normalizeReportStatus(b.status);
@@ -874,7 +879,8 @@
         function getFilteredReports() {
             const dateFilter = document.getElementById('dateFilter').value;
             const typeFilter = document.getElementById('typeFilter').value;
-            const statusFilter = document.getElementById('statusFilter').value;
+            const rawStatusFilter = document.getElementById('statusFilter').value;
+            const statusFilter = rawStatusFilter === 'all' ? 'all' : normalizeReportStatus(rawStatusFilter);
             const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
 
             return sortReportsNewestFirst(allReports.filter(row => {
@@ -906,7 +912,8 @@
             document.getElementById('recordCount').textContent = countLabel;
 
             if (reports.length === 0) {
-                const statusFilter = document.getElementById('statusFilter').value;
+            const rawStatusFilter = document.getElementById('statusFilter').value;
+            const statusFilter = rawStatusFilter === 'all' ? 'all' : normalizeReportStatus(rawStatusFilter);
                 const statusLabel = statusFilter === 'all' ? '' : ` for the selected status`;
                 document.getElementById('output').innerHTML = `
                     <div class="p-10 text-center">
@@ -1241,24 +1248,39 @@
 
     <script>
         const EMERGENCY_ALERTS_TABLE = 'emergency_alerts';
+        let callRecordsCache = [];
+        let callRecordsChannel = null;
+        let callDetailMap = null;
+        let callDetailMarker = null;
 
         async function getCallRecords() {
-            if (!window.supabaseClient) return [];
+            if (!window.supabaseClient) {
+                const error = new Error('Supabase client is not available');
+                console.error('[Call Records] Query error:', error);
+                return { records: [], error };
+            }
+            console.log('[Call Records] Query started:', EMERGENCY_ALERTS_TABLE);
             try {
                 const { data, error } = await window.supabaseClient
                     .from(EMERGENCY_ALERTS_TABLE)
                     .select('*')
-                    .order('received_at', { ascending: false })
+                    .order('created_at', { ascending: false })
                     .limit(200);
 
+                console.log('Emergency alerts data:', data);
+                console.log('Emergency alerts error:', error);
                 if (error) {
-                    console.error('Failed to fetch call records from Supabase:', error);
-                    return [];
+                    console.error('[Call Records] Database error:', error);
+                    return { records: [], error };
                 }
-                return data || [];
-            } catch (err) {
-                console.error('Exception fetching call records from Supabase:', err);
-                return [];
+                const records = data || [];
+                console.log('[Call Records] Records retrieved:', records);
+                console.log('[Call Records] Number of rows returned:', records.length);
+                console.log('[Call Records] emergency_alerts sample:', records[0] || null);
+                return { records, error: null };
+            } catch (error) {
+                console.error('[Call Records] Query exception:', error);
+                return { records: [], error };
             }
         }
 
@@ -1292,14 +1314,102 @@
                 .replace(/'/g, '&#039;');
         }
 
+        function getCallCoordinates(record) {
+            const latitudeField = record && Object.prototype.hasOwnProperty.call(record, 'latitude') ? 'latitude' : 'lat';
+            const longitudeField = record && Object.prototype.hasOwnProperty.call(record, 'longitude') ? 'longitude' : (Object.prototype.hasOwnProperty.call(record || {}, 'long') ? 'long' : 'lng');
+            const latitude = Number(record?.[latitudeField]);
+            const longitude = Number(record?.[longitudeField]);
+            return Number.isFinite(latitude) && Number.isFinite(longitude)
+                && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
+                ? { latitude, longitude, latitudeField, longitudeField }
+                : null;
+        }
+
+        function callRecordTimestamp(record) {
+            return record?.created_at || null;
+        }
+
+        function ensureCallDetailModal() {
+            let modal = document.getElementById('callRecordDetailModal');
+            if (modal) return modal;
+            modal = document.createElement('div');
+            modal.id = 'callRecordDetailModal';
+            modal.className = 'fixed inset-0 z-[10001] hidden items-center justify-center bg-slate-950/50 p-4';
+            modal.innerHTML = `
+                <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <div><p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Emergency alert</p><h2 id="callDetailTitle" class="text-lg font-bold text-slate-900">Call details</h2></div>
+                        <button type="button" onclick="closeCallRecordDetails()" class="rounded-md px-3 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100">Close</button>
+                    </div>
+                    <div id="callDetailContent" class="space-y-4 p-5"></div>
+                </div>`;
+            modal.addEventListener('click', (event) => { if (event.target === modal) closeCallRecordDetails(); });
+            document.body.appendChild(modal);
+            return modal;
+        }
+
+        function closeCallRecordDetails() {
+            const modal = document.getElementById('callRecordDetailModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function openCallRecordDetails(index) {
+            const record = callRecordsCache[index];
+            if (!record) return;
+            const modal = ensureCallDetailModal();
+            const detailContent = document.getElementById('callDetailContent');
+            const title = document.getElementById('callDetailTitle');
+            const deviceId = record.device_id || record.deviceId || record.reporter_device_id || record.reporter_device || '-';
+            const emergencyType = record.emergency_type || record.type || record.category || '-';
+            const coordinates = getCallCoordinates(record);
+            title.textContent = `Alert ${record.id || '-'}`;
+            const fields = [
+                ['Alert ID', record.id], ['Device ID', deviceId],
+                ['Created', callRecordTimestamp(record) ? `${formatDate(callRecordTimestamp(record))} ${formatTime(callRecordTimestamp(record))}` : '-'],
+                ['Latitude', coordinates ? coordinates.latitude : (record.latitude ?? record.lat)], ['Longitude', coordinates ? coordinates.longitude : (record.longitude ?? record.long ?? record.lng)],
+                ['Description', record.description || record.message], ['Handled by', record.handled_by]
+            ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+            const shownKeys = new Set(['id', 'device_id', 'deviceId', 'reporter_device_id', 'reporter_device', 'emergency_type', 'type', 'category', 'status', 'created_at', 'received_at', 'timestamp', 'latitude', 'longitude', 'description', 'message', 'handled_by']);
+            Object.entries(record).forEach(([key, value]) => {
+                if (!shownKeys.has(key) && value !== undefined && value !== null && value !== '') fields.push([key.replace(/_/g, ' '), typeof value === 'object' ? JSON.stringify(value) : value]);
+            });
+            detailContent.innerHTML = `
+                <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">${fields.map(([label, value]) => `<div class="rounded-lg bg-slate-50 p-3"><dt class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</dt><dd class="mt-1 break-words text-sm text-slate-800">${escapeHtml(value)}</dd></div>`).join('')}</dl>
+                <div><p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Emergency location</p><div id="callDetailMapMessage" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"></div><div id="callDetailMap" class="h-64 rounded-lg border border-slate-200"></div></div>`;
+            modal.classList.remove('hidden');
+
+            const mapEl = document.getElementById('callDetailMap');
+            const messageEl = document.getElementById('callDetailMapMessage');
+            if (!coordinates || !window.L) {
+                mapEl.classList.add('hidden');
+                messageEl.classList.remove('hidden');
+                messageEl.textContent = !coordinates ? 'Location is unavailable because this alert has missing or invalid coordinates.' : 'Map preview is unavailable.';
+                console.warn('[Call Records] Invalid or missing coordinates:', { id: record.id, latitude: record.latitude ?? record.lat, longitude: record.longitude ?? record.long ?? record.lng });
+                return;
+            }
+            if (callDetailMap) { callDetailMap.remove(); callDetailMap = null; callDetailMarker = null; }
+            callDetailMap = L.map(mapEl, { zoomControl: true }).setView([coordinates.latitude, coordinates.longitude], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(callDetailMap);
+            callDetailMarker = L.marker([coordinates.latitude, coordinates.longitude]).addTo(callDetailMap);
+            callDetailMarker.bindPopup(`<strong>${escapeHtml(emergencyType)}</strong><br>${escapeHtml(record.description || record.message || 'Emergency alert')}<br>${escapeHtml(deviceId)}`);
+            callDetailMarker.openPopup();
+            callDetailMap.setView(callDetailMarker.getLatLng(), 16, { animate: true });
+            window.setTimeout(() => { callDetailMap.invalidateSize(); callDetailMap.setView([coordinates.latitude, coordinates.longitude], 16); }, 100);
+            console.log('[Call Records] Map marker successfully created:', { id: record.id, latitude: coordinates.latitude, longitude: coordinates.longitude, latitudeField: coordinates.latitudeField, longitudeField: coordinates.longitudeField });
+        }
+
         async function renderCallRecords() {
-            const records = await getCallRecords();
+            const { records, error } = await getCallRecords();
             const countEl = document.getElementById('callRecordCount');
-            if (countEl) countEl.textContent = `${records.length} call${records.length === 1 ? '' : 's'}`;
+            if (countEl) countEl.textContent = error ? 'Unable to load calls' : `${records.length} call${records.length === 1 ? '' : 's'}`;
 
             const tbody = document.getElementById('callRecordsBody');
             if (!tbody) return;
 
+            if (error) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-sm font-medium text-red-500">Unable to load call records. Check the browser console for the Supabase error.</td></tr>`;
+                return;
+            }
             if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
@@ -1309,32 +1419,40 @@
                 return;
             }
 
-            const sorted = [...records].sort((a, b) => {
-                const aActive = (a.status === 'accepted' && !a.ended_at) ? 0 : 1;
-                const bActive = (b.status === 'accepted' && !b.ended_at) ? 0 : 1;
-                if (aActive !== bActive) return aActive - bActive;
+            const sorted = [...records].sort((a, b) => new Date(callRecordTimestamp(b) || 0) - new Date(callRecordTimestamp(a) || 0));
+            callRecordsCache = sorted;
 
-                const aTime = new Date(a.received_at || a.timestamp || 0).getTime();
-                const bTime = new Date(b.received_at || b.timestamp || 0).getTime();
-                return bTime - aTime;
-            });
-
-            tbody.innerHTML = sorted.map(record => {
+            tbody.innerHTML = sorted.map((record, index) => {
                 const deviceId = record.device_id || record.deviceId || record.reporter_device_id || record.reporter_device || 'N/A';
                 const displayDeviceId = deviceId === 'N/A' ? 'N/A' : (deviceId.length > 20 ? deviceId.slice(0, 20) + '...' : deviceId);
                 return `
-                <tr class="cursor-pointer transition hover:bg-blue-50/50">
-                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(record.received_at || record.timestamp))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(record.received_at || record.timestamp))}</td>
+                <tr data-call-record-index="${index}" class="cursor-pointer transition hover:bg-blue-50/50">
+                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(callRecordTimestamp(record)))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(callRecordTimestamp(record)))}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.duration_seconds))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(record.handled_by || '-')}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(record.answered_by_admin_fullname || record.handled_by || '-')}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700" title="${escapeHtml(deviceId)}">${escapeHtml(displayDeviceId)}</td>
                 </tr>
             `;
             }).join('');
+            tbody.querySelectorAll('[data-call-record-index]').forEach(row => row.addEventListener('click', () => openCallRecordDetails(Number(row.dataset.callRecordIndex))));
+        }
+
+        function subscribeToCallRecordChanges() {
+            if (!window.supabaseClient || callRecordsChannel) return;
+            callRecordsChannel = window.supabaseClient.channel('call-records-emergency-alerts')
+                .on('postgres_changes', { event: '*', schema: 'public', table: EMERGENCY_ALERTS_TABLE }, (payload) => {
+                    console.log('[Call Records] Realtime alert change received:', payload.eventType, payload.new?.id || payload.old?.id);
+                    renderCallRecords().catch(error => console.error('[Call Records] Realtime refresh failed:', error));
+                })
+                .subscribe((status, error) => console.log('[Call Records] Realtime subscription:', status, error || ''));
         }
 
         window.renderCallRecords = renderCallRecords;
+        window.openCallRecordDetails = openCallRecordDetails;
+        window.closeCallRecordDetails = closeCallRecordDetails;
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', subscribeToCallRecordChanges);
+        else subscribeToCallRecordChanges();
     </script>
 
     <script src="webrtc.js"></script>

@@ -11,6 +11,12 @@ const ILOILO_CITY_POLYGON = [
 ];
 
 let map = null;
+let callerLocationLayer = null;
+const activeCallerMarkers = new Map();
+const activeCallerAlerts = new Map();
+const dismissedCallerAlerts = new Set();
+let callerLocationChannel = null;
+const pendingRealtimeIncomingAlerts = new Map();
 let selectedNotificationId = null;
 let notificationFilter = 'All';
 if (!window.allIncidents) window.allIncidents = [];
@@ -118,10 +124,13 @@ function initializeMap() {
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    window.policeLayer = L.layerGroup().addTo(map);
-    window.fireLayer = L.layerGroup().addTo(map);
-    window.hospitalLayer = L.layerGroup().addTo(map);
+    // Station layers start hidden; the existing Police/Fire/Hospital controls
+    // let each user choose which reference markers to show.
+    window.policeLayer = L.layerGroup();
+    window.fireLayer = L.layerGroup();
+    window.hospitalLayer = L.layerGroup();
     window.incidentLayer = L.layerGroup().addTo(map);
+    callerLocationLayer = L.layerGroup().addTo(map);
 
     const policeIcon = L.icon({
         iconUrl: 'images/police.png',
@@ -207,6 +216,7 @@ function initializeMap() {
     }
 
     loadReports();
+    renderActiveCallerMarkers();
 
     setTimeout(() => {
         try { map.invalidateSize(); } catch (e) { /* ignore */ }
@@ -217,6 +227,162 @@ function initializeMap() {
     }, 500);
 
     setTimeout(refreshToggleState, 50);
+}
+
+function getCallerAlertCoordinates(alert) {
+    const lat = Number(alert?.latitude ?? alert?.lat);
+    const lng = Number(alert?.longitude ?? alert?.long ?? alert?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && isPointInPolygon(lat, lng)
+        ? { lat, lng }
+        : null;
+}
+
+function isEndedCallerAlert(alert) {
+    const status = String(alert?.status || '').toLowerCase().trim();
+    return ['ended', 'cancelled', 'canceled', 'failed', 'missed', 'expired', 'completed', 'resolved', 'closed'].includes(status);
+}
+
+function showCallerLocationPing(alertId, alert, { recenter = false } = {}) {
+    const coordinates = getCallerAlertCoordinates(alert);
+    const id = String(alertId || alert?.id || 'unknown-caller');
+    if (dismissedCallerAlerts.has(id)) return false;
+    const lat = coordinates?.lat;
+    const lng = coordinates?.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        console.warn('[Caller Location] Invalid coordinates:', { alertId: id, latitude: alert?.latitude ?? alert?.lat, longitude: alert?.longitude ?? alert?.long ?? alert?.lng });
+        return false;
+    }
+    if (!map) initializeMap();
+    if (!map || !window.L) {
+        console.warn('[Caller Location] Dashboard map is not ready for caller ping');
+        return false;
+    }
+    let marker = activeCallerMarkers.get(id);
+    if (marker) {
+        marker.setLatLng([lat, lng]);
+        console.log('[Caller Location] Position updated:', { alertId: id, latitude: lat, longitude: lng });
+    } else {
+        const callerLocationIcon = L.icon({
+            iconUrl: 'images/location.png',
+            iconSize: [40, 40],
+            iconAnchor: [20, 40],
+            popupAnchor: [0, -40]
+        });
+        console.log('[Caller Location] Creating marker:', id);
+        console.log('[Caller Location] location.png loaded');
+        marker = L.marker([lat, lng], { icon: callerLocationIcon }).addTo(callerLocationLayer);
+        activeCallerMarkers.set(id, marker);
+        marker.bindPopup(`<strong>Incoming Emergency Call</strong><br>Caller location${alert?.caller_phone ? `<br>${escapeMapHtml(alert.caller_phone)}` : ''}${alert?.created_at ? `<br>${escapeMapHtml(new Date(alert.created_at).toLocaleString())}` : ''}<br><button type="button" onclick="dismissCallerLocationPing('${escapeMapHtml(id)}')" style="margin-top:8px;padding:4px 8px;border:0;border-radius:4px;background:#e2e8f0;color:#334155;font-weight:700;cursor:pointer">Close ping</button>`).openPopup();
+        console.log('[Caller Location] Marker added to Dashboard:', id);
+    }
+    if (recenter) map.setView([lat, lng], 16);
+    return true;
+}
+
+function clearCallerLocationPing(alertId) {
+    const id = String(alertId || '');
+    const marker = activeCallerMarkers.get(id);
+    if (marker && callerLocationLayer) callerLocationLayer.removeLayer(marker);
+    activeCallerMarkers.delete(id);
+    activeCallerAlerts.delete(id);
+    dismissedCallerAlerts.delete(id);
+    console.log('[Caller Location] Call ended - removing marker:', id);
+}
+
+function dismissCallerLocationPing(alertId) {
+    const id = String(alertId || '');
+    const marker = activeCallerMarkers.get(id);
+    if (marker && callerLocationLayer) callerLocationLayer.removeLayer(marker);
+    activeCallerMarkers.delete(id);
+    dismissedCallerAlerts.add(id);
+    console.log('[Caller Location] Ping dismissed by dispatcher:', id);
+}
+
+function syncCallerLocationAlert(alert, { notifyIncoming = false, eventType = null } = {}) {
+    const alertId = alert?.id;
+    if (!alertId) return;
+    const coordinates = getCallerAlertCoordinates(alert);
+    if (notifyIncoming) {
+        console.log('[Incoming Call] Realtime alert:', { id: alertId, eventType, status: alert?.status, coordinates });
+    }
+    if (notifyIncoming && typeof window.handleEmergencyAlertIncomingCall === 'function') {
+        window.handleEmergencyAlertIncomingCall(alert, { source: 'realtime', eventType });
+        pendingRealtimeIncomingAlerts.delete(String(alertId));
+    } else if (notifyIncoming) {
+        if (eventType === 'INSERT') pendingRealtimeIncomingAlerts.set(String(alertId), alert);
+        else if (isEndedCallerAlert(alert) || alert?.answered_by_admin_id) pendingRealtimeIncomingAlerts.delete(String(alertId));
+        console.warn('[Call Init] Realtime call queued until PeerJS is ready:', alertId);
+    }
+    if (isEndedCallerAlert(alert)) {
+        clearCallerLocationPing(alertId);
+        return;
+    }
+    activeCallerAlerts.set(String(alertId), alert);
+    // Location is retained during ringing, but is deliberately not rendered
+    // until this admin has successfully answered the call.
+    if (activeCallerMarkers.has(String(alertId))) showCallerLocationPing(alertId, alert);
+}
+
+function renderActiveCallerMarkers() {
+    // Existing alert history is cached for location lookup only. It must not
+    // replace the side panel's default "Waiting for call..." state.
+}
+
+function cacheCallerLocationAlert(alert) {
+    if (alert?.id) activeCallerAlerts.set(String(alert.id), alert);
+}
+
+function drainPendingRealtimeIncomingAlerts() {
+    if (typeof window.handleEmergencyAlertIncomingCall !== 'function') return;
+    const queued = [...pendingRealtimeIncomingAlerts.values()];
+    pendingRealtimeIncomingAlerts.clear();
+    queued.forEach(alert => window.handleEmergencyAlertIncomingCall(alert, { source: 'realtime', eventType: 'INSERT' }));
+}
+
+async function showClaimedCallerLocation(alertId) {
+    const id = String(alertId || '');
+    let alert = activeCallerAlerts.get(id);
+    if (!alert && window.supabaseClient && id) {
+        const { data, error } = await window.supabaseClient.from('emergency_alerts').select('*').eq('id', id).maybeSingle();
+        if (error) {
+            console.error('[Caller Location] Failed to read claimed alert:', error);
+            return false;
+        }
+        alert = data;
+        if (alert) activeCallerAlerts.set(id, alert);
+    }
+    if (!alert) {
+        console.warn('[Caller Location] No alert data available for claimed call:', id);
+        return false;
+    }
+    return showCallerLocationPing(id, alert, { recenter: true });
+}
+
+async function loadActiveCallerLocations() {
+    if (!window.supabaseClient) return;
+    const { data, error } = await window.supabaseClient.from('emergency_alerts').select('*').order('created_at', { ascending: false });
+    if (error) {
+        console.error('[Caller Location] Failed to load emergency alerts:', error);
+        return;
+    }
+    // Historical rows are location lookup data only. Fetching them must never
+    // manufacture an incoming call during page initialization.
+    (data || []).forEach(alert => syncCallerLocationAlert(alert, { notifyIncoming: false }));
+}
+
+function subscribeToCallerLocations() {
+    if (!window.supabaseClient || callerLocationChannel) return;
+    callerLocationChannel = window.supabaseClient.channel('caller-location-emergency-alerts')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_alerts' }, payload => {
+            console.log('[Emergency Alerts Realtime]', { eventType: payload.eventType, newRecord: payload.new, oldRecord: payload.old });
+            console.log('[Call Debug] emergency_alerts realtime event received');
+            console.log('[Call Debug] Event type:', payload.eventType);
+            const alert = payload.new || payload.old;
+            if (payload.eventType === 'DELETE') clearCallerLocationPing(alert?.id);
+            else syncCallerLocationAlert(alert, { notifyIncoming: true, eventType: payload.eventType });
+        })
+        .subscribe((status, error) => console.log('[Caller Location] Supabase subscription:', status, error || ''));
+    loadActiveCallerLocations().catch(error => console.error('[Caller Location] Initial load failed:', error));
 }
 
 function centerMap() {
@@ -1421,6 +1587,13 @@ setInterval(() => {
 }, 5000);
 
 window.initializeMap = initializeMap;
+window.showCallerLocationPing = showCallerLocationPing;
+window.clearCallerLocationPing = clearCallerLocationPing;
+window.dismissCallerLocationPing = dismissCallerLocationPing;
+window.replayActiveCallerAlerts = renderActiveCallerMarkers;
+window.cacheCallerLocationAlert = cacheCallerLocationAlert;
+window.showClaimedCallerLocation = showClaimedCallerLocation;
+window.drainPendingRealtimeIncomingAlerts = drainPendingRealtimeIncomingAlerts;
 window.centerMap = centerMap;
 window.selectNotification = selectNotification;
 window.openNotificationDetails = openNotificationDetails;
@@ -1432,6 +1605,8 @@ window.refreshMapSize = function refreshMapSize() {
         map.invalidateSize();
     }
 };
+
+subscribeToCallerLocations();
 
 function initMapLegend() {
     const panel = document.getElementById('mapLegendPanel');
