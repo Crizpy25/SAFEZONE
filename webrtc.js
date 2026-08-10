@@ -1753,8 +1753,10 @@ async function acceptCall() {
         ensureIncomingCallUI();
         setStatus('Connecting...');
         adminState.currentCall = { transport: 'metered', alertId: callId };
+        const meteredAlertId = String(adminState.activeAlertId || adminState.incomingCallId || callId);
+        console.log('[Admin Call] Metered alertId used for room join:', { callId, activeAlertId: adminState.activeAlertId, meteredAlertId });
         await window.MeteredCall.joinCall({
-            alertId: callId,
+            alertId: meteredAlertId,
             role: 'admin',
             onConnected: ({ stream }) => {
                 if (String(adminState.activeAlertId || '') !== callId || adminState.isCleaningUp) return;

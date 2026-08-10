@@ -3,7 +3,46 @@
 
     const METERED_KEY = 'pk_live_ffa91f88e27d9d705f400f3a9f29eeba2380691f';
     const REMOTE_TIMEOUT_MS = 30000;
+    const METERED_SDK_URL = 'https://unpkg.com/@metered-ca/realtime/dist/index.umd.js';
+    let meteredSdkLoadPromise = null;
     let session = null;
+
+    async function ensureMeteredSdkLoaded() {
+        if (window.MeteredPeer?.MeteredPeer) return;
+        if (meteredSdkLoadPromise) return meteredSdkLoadPromise;
+
+        meteredSdkLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            const timeout = window.setTimeout(() => {
+                script.remove();
+                reject(new Error('Timed out loading Metered browser SDK'));
+                meteredSdkLoadPromise = null;
+            }, 15000);
+
+            script.src = METERED_SDK_URL;
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            script.addEventListener('load', () => {
+                window.clearTimeout(timeout);
+                if (window.MeteredPeer?.MeteredPeer) {
+                    resolve();
+                } else {
+                    reject(new Error('Metered browser SDK loaded but did not initialize'));
+                    meteredSdkLoadPromise = null;
+                }
+            }, { once: true });
+            script.addEventListener('error', () => {
+                window.clearTimeout(timeout);
+                script.remove();
+                reject(new Error('Failed to load Metered browser SDK'));
+                meteredSdkLoadPromise = null;
+            }, { once: true });
+
+            document.head.appendChild(script);
+        });
+
+        return meteredSdkLoadPromise;
+    }
 
     function snapshot() {
         return {
@@ -86,6 +125,7 @@
         if (!alertId) throw new Error('alertId is required');
         if (session) await endCall('replaced-by-new-call');
 
+        await ensureMeteredSdkLoaded();
         const roomId = `safezone-call-${alertId}`;
         const MeteredPeer = getSdkConstructor();
         const peer = new MeteredPeer({ apiKey: METERED_KEY });
