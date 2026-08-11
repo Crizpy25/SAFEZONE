@@ -118,7 +118,7 @@ async function handleLogin(event) {
     try {
         const { data, error } = await db
             .from('admins')
-            .select('id, username, fullname, email')
+            .select('id, username, fullname, email, is_online')
             .eq('username', username)
             .eq('password', password)
             .single();
@@ -130,7 +130,34 @@ async function handleLogin(event) {
             return;
         }
 
-        await db.from('admins').update({ is_online: true, last_login: new Date().toISOString() }).eq('id', data.id);
+        if (data.is_online === true) {
+            if (errorMessage) {
+                errorMessage.textContent = 'This admin account is already logged in on another site.';
+                errorMessage.classList.remove('hidden');
+            }
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) passwordInput.value = '';
+            return;
+        }
+
+        const { data: claimedAdmin, error: claimError } = await db
+            .from('admins')
+            .update({ is_online: true, last_login: new Date().toISOString() })
+            .eq('id', data.id)
+            .eq('is_online', false)
+            .select('id')
+            .maybeSingle();
+
+        if (claimError) throw claimError;
+        if (!claimedAdmin) {
+            if (errorMessage) {
+                errorMessage.textContent = 'This admin account is already logged in on another site.';
+                errorMessage.classList.remove('hidden');
+            }
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) passwordInput.value = '';
+            return;
+        }
 
         sessionStorage.setItem('adminLoggedIn', 'true');
         sessionStorage.setItem('adminUser', data.username);

@@ -366,16 +366,15 @@
                         <table class="min-w-full divide-y divide-slate-200">
                         <thead class="bg-slate-100/80">
                             <tr>
-                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</th>
-                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Time</th>
-                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Duration</th>
-                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Handled By</th>
-                                <th class="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Device ID</th>
+                                <th class="w-[20%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Date</th>
+                                <th class="w-[16%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Time</th>
+                                <th class="w-[32%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Handled By</th>
+                                <th class="w-[32%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Device ID</th>
                             </tr>
                         </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
                                 <tr>
-                                    <td colspan="5" class="px-4 py-8 text-center text-slate-400">Loading...</td>
+                                    <td colspan="4" class="px-5 py-10 text-center text-sm text-slate-400">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -393,7 +392,7 @@
                     </div>
                     <div class="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                         <div class="flex flex-col gap-1">
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Time range</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date</span>
                             <select id="analyticsRange" class="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="all">All Dates</option><option value="today">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select>
                         </div>
                         <div class="flex flex-col gap-1">
@@ -425,7 +424,7 @@
 
                 <section class="mt-5 rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div class="border-b border-slate-200 px-5 py-3"><h2 class="font-bold text-slate-900">Operational Summary</h2></div>
-                    <div id="analyticsOperationalSummary" class="grid grid-cols-1 divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4"></div>
+                    <div id="analyticsOperationalSummary" class="grid grid-cols-1 divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-3"></div>
                 </section>
             </div>
         </div>
@@ -550,7 +549,7 @@
             }, [0, 0, 0, 0, 0, 0]);
             const peak = hours.indexOf(Math.max(...hours));
             const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
-            const stats = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports received` : 'No reports found'], ['Total Reports Received', total.toLocaleString(), 'Across all categories'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Tracked Categories', types.length, 'Emergency report types']];
+            const stats = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports received` : 'No reports found'], ['Total Reports Received', total.toLocaleString(), 'Across all categories'], ['Peak Reporting Window', peakWindow, 'Highest report volume']];
             document.getElementById('analyticsSummary').textContent = `${total.toLocaleString()} reports received across all categories`;
             document.getElementById('analyticsKpis').innerHTML = stats.map(([label, value, note]) => `<article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-xl font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-3 py-2 text-xs font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-3 py-2 text-xs"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-3 py-2 text-xs"><div class="h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-3 py-2 text-right text-xs font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
@@ -573,8 +572,8 @@
             const selectedStatus = getAnalyticsStatusFilter();
             document.getElementById('analyticsSummary').textContent = selectedStatus === 'all' ? `${rangeTotal.toLocaleString()} reports received across all categories` : `${total.toLocaleString()} ${selectedStatus} reports in the selected period`;
 
-            const kpis = [['Total Reports', rangeTotal, 'All reports in this period', 'bg-blue-50 text-blue-700'], ['Active Reports', statusCounts.ACTIVE, 'Awaiting or receiving action', 'bg-amber-50 text-amber-700'], ['Resolved Reports', statusCounts.RESOLVED, 'Successfully completed', 'bg-emerald-50 text-emerald-700'], ['Cancelled Reports', statusCounts.CANCELLED, 'Closed without resolution', 'bg-slate-100 text-slate-700']];
-            document.getElementById('analyticsKpis').innerHTML = kpis.map(([label, value, note, color]) => `<article class="flex min-h-28 items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-2 text-3xl font-bold text-slate-900">${Number(value).toLocaleString()}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></div><span class="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold ${color}">${rangeTotal ? Math.round(value / rangeTotal * 100) : 0}%</span></article>`).join('');
+            const kpis = [['Total Reports', rangeTotal, 'All reports in this period', 'bg-blue-50 text-blue-700'], ['Active Reports', statusCounts.ACTIVE, 'Awaiting or receiving action', 'bg-amber-50 text-amber-700'], ['Resolved Reports', statusCounts.RESOLVED, 'Successfully completed', 'bg-emerald-50 text-emerald-700'], ['Cancelled Reports', statusCounts.CANCELLED, 'Total and percentage of cancelled reports.', 'bg-slate-100 text-slate-700']];
+            document.getElementById('analyticsKpis').innerHTML = kpis.map(([label, value, note, color]) => `<article class="flex min-h-28 items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-2 text-3xl font-bold text-slate-900">${Number(value).toLocaleString()}</p>${note ? `<p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p>` : ''}</div><span class="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold ${color}">${rangeTotal ? Math.round(value / rangeTotal * 100) : 0}%</span></article>`).join('');
 
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-1 text-xs font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-16 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
 
@@ -586,7 +585,7 @@
             const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
             const validDates = records.map(record => new Date(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
             const top = types[0];
-            const operational = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports in current view` : 'No reports found'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Latest Report', validDates[0] ? `${formatDate(validDates[0])} ${formatTime(validDates[0])}` : '—', 'Most recent matching report'], ['Tracked Categories', types.length, 'Emergency types in current view']];
+            const operational = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports in current view` : 'No reports found'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Latest Report', validDates[0] ? `${formatDate(validDates[0])} ${formatTime(validDates[0])}` : '—', 'Most recent matching report']];
             document.getElementById('analyticsOperationalSummary').innerHTML = operational.map(([label, value, note]) => `<article class="p-5"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-lg font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
         }
 
@@ -1364,13 +1363,6 @@
             return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
         }
 
-        function formatDuration(seconds) {
-            if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) return '-';
-            const mins = Math.floor(Number(seconds) / 60);
-            const secs = Number(seconds) % 60;
-            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-        }
-
         function escapeHtml(value) {
             return String(value ?? '')
                 .replace(/&/g, '&amp;')
@@ -1478,13 +1470,13 @@
             if (!tbody) return;
 
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-sm font-medium text-red-500">Unable to load call records. Check the browser console for the Supabase error.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-10 text-center text-sm font-medium text-red-500">Unable to load call records. Check the browser console for the Supabase error.</td></tr>`;
                 return;
             }
             if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="px-4 py-8 text-center text-sm font-medium text-slate-400">No call records yet.</td>
+                        <td colspan="4" class="px-5 py-10 text-center text-sm font-medium text-slate-400">No call records yet.</td>
                     </tr>
                 `;
                 return;
@@ -1498,11 +1490,10 @@
                 const displayDeviceId = deviceId === 'N/A' ? 'N/A' : (deviceId.length > 20 ? deviceId.slice(0, 20) + '...' : deviceId);
                 return `
                 <tr data-call-record-index="${index}" class="cursor-pointer transition hover:bg-blue-50/50">
-                    <td class="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-800">${escapeHtml(formatDate(callRecordTimestamp(record)))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-600">${escapeHtml(formatTime(callRecordTimestamp(record)))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(formatDuration(record.duration_seconds))}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700">${escapeHtml(record.answered_by_admin_fullname || record.handled_by || '-')}</td>
-                    <td class="whitespace-nowrap px-3 py-2 text-xs text-slate-700" title="${escapeHtml(deviceId)}">${escapeHtml(displayDeviceId)}</td>
+                    <td class="whitespace-nowrap px-5 py-5 text-sm font-medium text-slate-800">${escapeHtml(formatDate(callRecordTimestamp(record)))}</td>
+                    <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-600">${escapeHtml(formatTime(callRecordTimestamp(record)))}</td>
+                    <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-700">${escapeHtml(record.answered_by_admin_fullname || record.handled_by || '-')}</td>
+                    <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-700" title="${escapeHtml(deviceId)}">${escapeHtml(displayDeviceId)}</td>
                 </tr>
             `;
             }).join('');
