@@ -368,13 +368,14 @@
                             <tr>
                                 <th class="w-[20%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Date</th>
                                 <th class="w-[16%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Time</th>
-                                <th class="w-[32%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Handled By</th>
-                                <th class="w-[32%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Device ID</th>
+                                <th class="w-[16%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Status</th>
+                                <th class="w-[24%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Handled By</th>
+                                <th class="w-[24%] px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Device ID</th>
                             </tr>
                         </thead>
                             <tbody id="callRecordsBody" class="divide-y divide-slate-100 bg-white">
                                 <tr>
-                                    <td colspan="4" class="px-5 py-10 text-center text-sm text-slate-400">Loading...</td>
+                                    <td colspan="5" class="px-5 py-10 text-center text-sm text-slate-400">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -384,8 +385,8 @@
         </div>
 
         <div id="view-analytics" class="hidden">
-            <div class="flex min-h-[calc(100vh-80px)] flex-col rounded-xl border border-white/70 bg-slate-50/95 p-5 shadow-2xl shadow-black/10 backdrop-blur sm:p-6 lg:p-8">
-                <div class="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div class="flex min-h-[calc(100vh-80px)] flex-col overflow-hidden rounded-xl border border-white/70 bg-slate-50/95 p-4 shadow-2xl shadow-black/10 backdrop-blur sm:p-5 lg:p-6">
+                <div class="mb-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">System Analytics</h1>
                         <p id="analyticsSummary" class="mt-1 text-sm font-medium text-slate-500">Loading analytics...</p>
@@ -402,11 +403,17 @@
                     </div>
                 </div>
 
-                <div id="analyticsKpis" class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+                <div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+                    <div id="analyticsKpis" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"></div>
+                    <section class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <h2 class="mb-2 text-sm font-bold text-slate-900">Call Analytics</h2>
+                        <div id="callAnalyticsKpis" class="grid grid-cols-3 gap-2"></div>
+                    </section>
+                </div>
 
-                <div class="grid flex-1 gap-5">
-                    <section class="flex min-h-[320px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                        <div class="border-b border-slate-200 px-5 py-4">
+                <div class="grid min-h-0 flex-1 gap-3">
+                    <section class="flex min-h-[240px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div class="border-b border-slate-200 px-4 py-3">
                             <h2 class="font-bold text-slate-900">Reports by Emergency Type</h2>
                             <p class="text-xs text-slate-500">Select a category to view its reports</p>
                         </div>
@@ -415,8 +422,8 @@
 
                 </div>
 
-                <section class="mt-5 rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div class="border-b border-slate-200 px-5 py-3"><h2 class="font-bold text-slate-900">Operational Summary</h2></div>
+                <section class="mt-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div class="border-b border-slate-200 px-4 py-2"><h2 class="text-sm font-bold text-slate-900">Operational Summary</h2></div>
                     <div id="analyticsOperationalSummary" class="grid grid-cols-1 divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-3"></div>
                 </section>
             </div>
@@ -526,6 +533,40 @@
             return date;
         }
 
+        function isAnsweredCall(record) {
+            const status = String(record?.status || '').toLowerCase().trim();
+            if (status.includes('cancel') || status.includes('reject') || status.includes('declin')) return false;
+            return status.includes('accept') || status.includes('answer') || status.includes('connect')
+                || status.includes('resolv') || status.includes('complet') || status.includes('end')
+                || Boolean(record?.accepted_at || record?.answered_by_admin_id || record?.handled_by_admin_id
+                    || record?.answered_by_admin_fullname || record?.handled_by);
+        }
+
+        function isCancelledCall(record) {
+            const status = String(record?.status || '').toLowerCase().trim();
+            return status.includes('cancel') || status.includes('reject') || status.includes('declin');
+        }
+
+        function renderCallAnalytics(records, error = null) {
+            const container = document.getElementById('callAnalyticsKpis');
+            if (!container) return;
+            if (error) {
+                container.innerHTML = '<p class="col-span-3 py-3 text-center text-xs text-red-500">Unable to load call analytics.</p>';
+                return;
+            }
+            const stats = [
+                ['Total Calls', records.length, 'text-blue-700'],
+                ['Answered Calls', records.filter(isAnsweredCall).length, 'text-emerald-700'],
+                ['Cancelled Calls', records.filter(isCancelledCall).length, 'text-rose-700']
+            ];
+            container.innerHTML = stats.map(([label, value, color]) => `
+                <article class="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                    <p class="text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500">${escapeHtml(label)}</p>
+                    <p class="mt-1 text-xl font-bold ${color}">${Number(value).toLocaleString()}</p>
+                </article>
+            `).join('');
+        }
+
         function renderAnalyticsRows(records) {
             const counts = records.reduce((result, record) => {
                 const category = analyticsCategory(record.category);
@@ -536,7 +577,7 @@
             const types = Object.entries(counts).map(([name, count]) => ({ name, count, percent: total ? count / total * 100 : 0, style: analyticsPresentation[name] || analyticsPresentation.Other })).sort((a, b) => b.count - a.count);
             const top = types[0];
             const hours = records.reduce((buckets, record) => {
-                const date = parseSupabaseTimestamp(record.created_at);
+                const date = parseReportTimestamp(record.created_at);
                 if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++;
                 return buckets;
             }, [0, 0, 0, 0, 0, 0]);
@@ -570,10 +611,10 @@
 
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-1 text-xs font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-16 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
 
-            const hours = records.reduce((buckets, record) => { const date = parseSupabaseTimestamp(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
+            const hours = records.reduce((buckets, record) => { const date = parseReportTimestamp(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
             const peak = hours.indexOf(Math.max(...hours));
             const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
-            const validDates = records.map(record => parseSupabaseTimestamp(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
+            const validDates = records.map(record => parseReportTimestamp(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
             const top = types[0];
             const operational = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports in current view` : 'No reports found'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Latest Report', validDates[0] ? `${formatDate(validDates[0])} ${formatTime(validDates[0])}` : '—', 'Most recent matching report']];
             document.getElementById('analyticsOperationalSummary').innerHTML = operational.map(([label, value, note]) => `<article class="p-5"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-lg font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
@@ -598,11 +639,16 @@
             const summary = document.getElementById('analyticsSummary');
             if (!rows || !window.supabaseClient) return;
             rows.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-slate-400">Loading reports...</td></tr>';
+            const callAnalytics = document.getElementById('callAnalyticsKpis');
+            if (callAnalytics) callAnalytics.innerHTML = '<p class="col-span-3 py-3 text-center text-xs text-slate-400">Loading...</p>';
             summary.textContent = 'Loading analytics...';
             let query = window.supabaseClient.from('incidents').select('category, created_at, status');
+            let callQuery = window.supabaseClient.from('emergency_alerts').select('*');
             const start = analyticsStartDate(document.getElementById('analyticsRange').value);
             if (start) query = query.gte('created_at', start.toISOString());
-            const { data, error } = await query;
+            if (start) callQuery = callQuery.gte('created_at', start.toISOString());
+            const [{ data, error }, { data: callData, error: callError }] = await Promise.all([query, callQuery]);
+            renderCallAnalytics(Array.isArray(callData) ? callData : [], callError);
             if (error) { summary.textContent = 'Unable to load analytics.'; rows.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-sm text-red-500">${escapeHtml(error.message)}</td></tr>`; return; }
             const rangeRecords = Array.isArray(data) ? data : [];
             const selectedStatus = getAnalyticsStatusFilter();
@@ -753,8 +799,9 @@
             const date = getReportDate(report);
             const type = normalizeReportType(report.category);
             const imgUrl = getImageUrl(report.image_url);
+            const deviceId = getReportDeviceId(report);
             const fields = Object.entries(report)
-                .filter(([key]) => key !== 'description')
+                .filter(([key]) => !['description', 'created_at', 'updated_at', 'timestamp', 'device_id'].includes(key))
                 .map(([key, value]) => {
                     const label = key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
                     const displayValue = key === 'image_url' && imgUrl
@@ -792,6 +839,10 @@
                     </div>
                 </div>
                 <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <dt class="text-xs font-bold uppercase tracking-wide text-slate-500">Device ID</dt>
+                        <dd class="mt-1 break-words text-sm text-slate-800">${escapeHtml(deviceId)}</dd>
+                    </div>
                     ${fields || ''}
                 </dl>
             `;
@@ -833,8 +884,15 @@
         }
 
         function getReportDate(row) {
-            const date = parseSupabaseTimestamp(row.created_at || row.updated_at || row.timestamp);
+            const date = parseReportTimestamp(row.created_at || row.updated_at || row.timestamp);
             return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function getReportDeviceId(report) {
+            const value = report?.device_id;
+            if (value === null || value === undefined) return 'N/A';
+            const deviceId = String(value).trim();
+            return deviceId || 'N/A';
         }
 
         function normalizeReportStatus(status) {
@@ -889,8 +947,8 @@
         function formatDate(date) {
             if (!date) return '-';
             return new Intl.DateTimeFormat('en-US', {
-                month: 'short',
-                day: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
                 year: 'numeric',
                 timeZone: _getAdminDeviceTimeZone()
             }).format(date);
@@ -899,9 +957,9 @@
         function formatTime(date) {
             if (!date) return '-';
             return new Intl.DateTimeFormat('en-US', {
-                hour: '2-digit',
+                hour: 'numeric',
                 minute: '2-digit',
-                hour12: false,
+                hour12: true,
                 timeZone: _getAdminDeviceTimeZone()
             }).format(date);
         }
@@ -1122,7 +1180,7 @@
         let _selectedLatLng = null;
 
         function _getAdminDeviceTimeZone() {
-            return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+            return window.SAFEZONE_TIME_ZONE || 'Asia/Manila';
         }
 
         function _formatDateTimeLabel(value) {
@@ -1348,14 +1406,14 @@
             if (!value) return '-';
             const date = parseSupabaseTimestamp(value);
             if (Number.isNaN(date.getTime())) return '-';
-            return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: _getAdminDeviceTimeZone() }).format(date);
+            return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: _getAdminDeviceTimeZone() }).format(date);
         }
 
         function formatTime(value) {
             if (!value) return '-';
             const date = parseSupabaseTimestamp(value);
             if (Number.isNaN(date.getTime())) return '-';
-            return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _getAdminDeviceTimeZone() }).format(date);
+            return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: _getAdminDeviceTimeZone() }).format(date);
         }
 
         function escapeHtml(value) {
@@ -1380,6 +1438,26 @@
 
         function callRecordTimestamp(record) {
             return record?.created_at || null;
+        }
+
+        function getCallStatus(record) {
+            const rawStatus = String(record?.status || '').toLowerCase().trim();
+            if (rawStatus.includes('cancel') || rawStatus.includes('reject') || rawStatus.includes('declin')) {
+                return { label: 'Cancelled', classes: 'bg-rose-100 text-rose-700' };
+            }
+            if (rawStatus.includes('accept') || rawStatus.includes('answer') || rawStatus.includes('connect')
+                || record?.accepted_at || record?.answered_by_admin_id || record?.handled_by_admin_id || record?.handled_by) {
+                return { label: 'Accepted', classes: 'bg-emerald-100 text-emerald-700' };
+            }
+            if (rawStatus.includes('resolv') || rawStatus.includes('complet') || rawStatus.includes('end')) {
+                return { label: 'Completed', classes: 'bg-slate-100 text-slate-700' };
+            }
+            return { label: 'Waiting', classes: 'bg-amber-100 text-amber-700' };
+        }
+
+        function getCallStatusBadge(record) {
+            const status = getCallStatus(record);
+            return `<span class="inline-flex rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${status.classes}">${status.label}</span>`;
         }
 
         function ensureCallDetailModal() {
@@ -1418,10 +1496,11 @@
             const deviceId = record.device_id || record.deviceId || record.reporter_device_id || record.reporter_device || '-';
             const emergencyType = record.emergency_type || record.type || record.category || '-';
             const adminName = record.answered_by_admin_fullname || record.handled_by || '-';
+            const callStatus = getCallStatus(record);
             const coordinates = getCallCoordinates(record);
             title.textContent = 'Emergency Call Details';
             const fields = [
-                ['Alert ID', record.id], ['Device ID', deviceId],
+                ['Alert ID', record.id], ['Status', callStatus.label], ['Device ID', deviceId],
                 ['Created', callRecordTimestamp(record) ? `${formatDate(callRecordTimestamp(record))} ${formatTime(callRecordTimestamp(record))}` : '-'],
                 ['Latitude', coordinates ? coordinates.latitude : (record.latitude ?? record.lat)], ['Longitude', coordinates ? coordinates.longitude : (record.longitude ?? record.long ?? record.lng)],
                 ['Description', record.description || record.message], ['Admin Name', adminName]
@@ -1465,13 +1544,13 @@
             if (!tbody) return;
 
             if (error) {
-                tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-10 text-center text-sm font-medium text-red-500">Unable to load call records. Check the browser console for the Supabase error.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-10 text-center text-sm font-medium text-red-500">Unable to load call records. Check the browser console for the Supabase error.</td></tr>`;
                 return;
             }
             if (!records.length) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="px-5 py-10 text-center text-sm font-medium text-slate-400">No call records yet.</td>
+                        <td colspan="5" class="px-5 py-10 text-center text-sm font-medium text-slate-400">No call records yet.</td>
                     </tr>
                 `;
                 return;
@@ -1487,6 +1566,7 @@
                 <tr data-call-record-index="${index}" class="cursor-pointer transition hover:bg-blue-50/50">
                     <td class="whitespace-nowrap px-5 py-5 text-sm font-medium text-slate-800">${escapeHtml(formatDate(callRecordTimestamp(record)))}</td>
                     <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-600">${escapeHtml(formatTime(callRecordTimestamp(record)))}</td>
+                    <td class="whitespace-nowrap px-5 py-5 text-sm">${getCallStatusBadge(record)}</td>
                     <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-700">${escapeHtml(record.answered_by_admin_fullname || record.handled_by || '-')}</td>
                     <td class="whitespace-nowrap px-5 py-5 text-sm text-slate-700" title="${escapeHtml(deviceId)}">${escapeHtml(displayDeviceId)}</td>
                 </tr>

@@ -539,7 +539,7 @@ function isEndedEmergencyAlert(record) {
 
 function getEmergencyAlertTimestamp(record) {
     const value = record?.received_at || record?.created_at;
-    const timestamp = value ? new Date(value).getTime() : NaN;
+    const timestamp = value ? parseSupabaseTimestamp(value).getTime() : NaN;
     return Number.isFinite(timestamp) ? timestamp : null;
 }
 

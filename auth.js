@@ -1,5 +1,8 @@
 const SUPABASE_URL = 'https://zjedyulcrxcttbukbynh.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_O4_Gy_uk6L50ARMA8QnP1g_QEAS2lJJ';
+const SAFEZONE_TIME_ZONE = 'Asia/Manila';
+
+window.SAFEZONE_TIME_ZONE = SAFEZONE_TIME_ZONE;
 
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -27,7 +30,18 @@ function parseSupabaseTimestamp(value) {
     return new Date(hasTimezone ? text : `${text}Z`);
 }
 
+function parseReportTimestamp(value) {
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'number') return new Date(value);
+    if (value === null || value === undefined || value === '') return new Date(NaN);
+
+    const text = String(value).trim().replace(' ', 'T');
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+    return new Date(hasTimezone ? text : `${text}+08:00`);
+}
+
 window.parseSupabaseTimestamp = parseSupabaseTimestamp;
+window.parseReportTimestamp = parseReportTimestamp;
 
 async function handleRegister(event) {
     event.preventDefault();

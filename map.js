@@ -272,7 +272,7 @@ function showCallerLocationPing(alertId, alert, { recenter = false } = {}) {
         console.log('[Caller Location] location.png loaded');
         marker = L.marker([lat, lng], { icon: callerLocationIcon }).addTo(callerLocationLayer);
         activeCallerMarkers.set(id, marker);
-        const popupContent = `<div style="font-size:12px;color:#334155"><strong style="display:block;margin-bottom:4px;font-size:13px;color:#0f172a">Incoming Emergency Call</strong><span>Caller location</span>${alert?.created_at ? `<span style="display:block;margin-top:2px;color:#64748b">${escapeMapHtml(new Date(alert.created_at).toLocaleString())}</span>` : ''}<button type="button" onclick="dismissCallerLocationPing('${escapeMapHtml(id)}')" style="width:100%;margin-top:8px;padding:6px 8px;border:0;border-radius:6px;background:#e2e8f0;color:#334155;font-size:12px;font-weight:700;cursor:pointer">Close ping</button></div>`;
+    const popupContent = `<div style="font-size:12px;color:#334155"><strong style="display:block;margin-bottom:4px;font-size:13px;color:#0f172a">Incoming Emergency Call</strong><span>Caller location</span>${alert?.created_at ? `<span style="display:block;margin-top:2px;color:#64748b">${escapeMapHtml(parseSupabaseTimestamp(alert.created_at).toLocaleString('en-US', { timeZone: window.SAFEZONE_TIME_ZONE || 'Asia/Manila' }))}</span>` : ''}<button type="button" onclick="dismissCallerLocationPing('${escapeMapHtml(id)}')" style="width:100%;margin-top:8px;padding:6px 8px;border:0;border-radius:6px;background:#e2e8f0;color:#334155;font-size:12px;font-weight:700;cursor:pointer">Close ping</button></div>`;
         marker.bindPopup(popupContent, {
             className: 'caller-location-popup',
             minWidth: 150,
@@ -580,10 +580,10 @@ function showNewReportToast(report) {
 
     const category = report.category ? report.category.toUpperCase() : 'EMERGENCY';
     const desc = report.description ? `: ${report.description}` : '';
-    const rawTime = report.created_at ? parseSupabaseTimestamp(report.created_at) : new Date();
+    const rawTime = report.created_at ? parseReportTimestamp(report.created_at) : new Date();
     const time = rawTime && !Number.isNaN(rawTime.getTime())
-        ? new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawTime)
-        : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+        ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: window.SAFEZONE_TIME_ZONE || 'Asia/Manila' }).format(rawTime)
+        : new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: window.SAFEZONE_TIME_ZONE || 'Asia/Manila' }).format(new Date());
     const html = `<strong>${category}</strong>${desc}<br><span style="opacity:.85">${time}</span>`;
 
     let targetSlot = slots.find(slot => slot.classList.contains('hidden'));
@@ -901,9 +901,9 @@ function openNotificationDetailsModal(report) {
     const location = getNotificationLocation(report);
     const timestamp = formatNotificationTimestamp(report);
 
-    const rawDate = parseSupabaseTimestamp(report.created_at || report.updated_at || report.timestamp || new Date());
-    const dateStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(rawDate);
-    const timeStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawDate);
+    const rawDate = parseReportTimestamp(report.created_at || report.updated_at || report.timestamp || new Date());
+    const dateStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: window.SAFEZONE_TIME_ZONE || 'Asia/Manila' }).format(rawDate);
+    const timeStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: window.SAFEZONE_TIME_ZONE || 'Asia/Manila' }).format(rawDate);
 
     const modal = document.getElementById('notificationDetailsModal');
     const content = document.getElementById('notificationDetailsContent');
@@ -1073,9 +1073,12 @@ function getNotificationLocation(report) {
 
 function formatNotificationTimestamp(report) {
     const raw = report?.created_at || report?.updated_at || report?.timestamp || new Date().toISOString();
-    const date = parseSupabaseTimestamp(raw);
+    const date = parseReportTimestamp(raw);
     if (Number.isNaN(date.getTime())) return 'Unknown time';
-    return `${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(date)} • ${new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(date)}`;
+    const timeZone = window.SAFEZONE_TIME_ZONE || 'Asia/Manila';
+    const dateLabel = new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone }).format(date);
+    const timeLabel = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone }).format(date);
+    return `${dateLabel} ${timeLabel}`;
 }
 
 function renderNotificationPanel() {
@@ -1100,8 +1103,8 @@ function renderNotificationPanel() {
         const bPriority = getNotificationStatusPriority(b.report?.status);
         if (aPriority !== bPriority) return aPriority - bPriority;
 
-        const aTime = new Date(a.report?.created_at || a.report?.updated_at || 0).getTime();
-        const bTime = new Date(b.report?.created_at || b.report?.updated_at || 0).getTime();
+        const aTime = parseReportTimestamp(a.report?.created_at || a.report?.updated_at || 0).getTime();
+        const bTime = parseReportTimestamp(b.report?.created_at || b.report?.updated_at || 0).getTime();
         return bTime - aTime;
     });
 
