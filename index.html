@@ -536,7 +536,7 @@
             const types = Object.entries(counts).map(([name, count]) => ({ name, count, percent: total ? count / total * 100 : 0, style: analyticsPresentation[name] || analyticsPresentation.Other })).sort((a, b) => b.count - a.count);
             const top = types[0];
             const hours = records.reduce((buckets, record) => {
-                const date = new Date(record.created_at);
+                const date = parseSupabaseTimestamp(record.created_at);
                 if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++;
                 return buckets;
             }, [0, 0, 0, 0, 0, 0]);
@@ -570,10 +570,10 @@
 
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-1 text-xs font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-16 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
 
-            const hours = records.reduce((buckets, record) => { const date = new Date(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
+            const hours = records.reduce((buckets, record) => { const date = parseSupabaseTimestamp(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
             const peak = hours.indexOf(Math.max(...hours));
             const peakWindow = total && hours.some(Boolean) ? `${String(peak * 4).padStart(2, '0')}:00 - ${String((peak * 4 + 4) % 24).padStart(2, '0')}:00` : '—';
-            const validDates = records.map(record => new Date(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
+            const validDates = records.map(record => parseSupabaseTimestamp(record.created_at)).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b - a);
             const top = types[0];
             const operational = [['Most Frequent Incident', top ? top.name : '—', top ? `${top.count} reports in current view` : 'No reports found'], ['Peak Reporting Window', peakWindow, 'Highest report volume'], ['Latest Report', validDates[0] ? `${formatDate(validDates[0])} ${formatTime(validDates[0])}` : '—', 'Most recent matching report']];
             document.getElementById('analyticsOperationalSummary').innerHTML = operational.map(([label, value, note]) => `<article class="p-5"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">${escapeHtml(label)}</p><p class="mt-1 truncate text-lg font-bold text-slate-900">${escapeHtml(value)}</p><p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p></article>`).join('');
@@ -833,7 +833,7 @@
         }
 
         function getReportDate(row) {
-            const date = new Date(row.created_at || row.updated_at || row.timestamp);
+            const date = parseSupabaseTimestamp(row.created_at || row.updated_at || row.timestamp);
             return Number.isNaN(date.getTime()) ? null : date;
         }
 
@@ -891,7 +891,8 @@
             return new Intl.DateTimeFormat('en-US', {
                 month: 'short',
                 day: 'numeric',
-                year: 'numeric'
+                year: 'numeric',
+                timeZone: _getAdminDeviceTimeZone()
             }).format(date);
         }
 
@@ -900,7 +901,8 @@
             return new Intl.DateTimeFormat('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: false
+                hour12: false,
+                timeZone: _getAdminDeviceTimeZone()
             }).format(date);
         }
 
@@ -1119,11 +1121,15 @@
         let _selectedIncidentType = null;
         let _selectedLatLng = null;
 
+        function _getAdminDeviceTimeZone() {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+        }
+
         function _formatDateTimeLabel(value) {
             if (!value) return '';
-            const date = new Date(value);
+            const date = parseSupabaseTimestamp(value);
             if (Number.isNaN(date.getTime())) return '';
-            return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+            return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: _getAdminDeviceTimeZone() }).format(date);
         }
 
         function openCreateReportModal() {
@@ -1144,8 +1150,7 @@
                 b.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
             });
 
-            const now = new Date();
-            document.getElementById('reportDateTime').value = _formatDateTimeLabel(now.toISOString());
+            document.getElementById('reportDateTime').value = _formatDateTimeLabel(new Date());
 
             const modal = document.getElementById('createReportModal');
             modal.classList.remove('hidden');
@@ -1234,14 +1239,14 @@
             submitBtn.disabled = true;
             submitBtn.textContent = 'Submitting...';
 
-            const now = new Date();
+            const submittedAt = new Date();
             const record = {
                 category: _selectedIncidentType,
                 description: description,
                 latitude: Number(_selectedLatLng.lat),
                 longitude: Number(_selectedLatLng.lng),
                 device_id: 'ADMIN',
-                created_at: now.toISOString(),
+                created_at: submittedAt.toISOString(),
                 status: 'active'
             };
 
@@ -1341,16 +1346,16 @@
 
         function formatDate(value) {
             if (!value) return '-';
-            const date = new Date(value);
+            const date = parseSupabaseTimestamp(value);
             if (Number.isNaN(date.getTime())) return '-';
-            return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+            return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: _getAdminDeviceTimeZone() }).format(date);
         }
 
         function formatTime(value) {
             if (!value) return '-';
-            const date = new Date(value);
+            const date = parseSupabaseTimestamp(value);
             if (Number.isNaN(date.getTime())) return '-';
-            return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+            return new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _getAdminDeviceTimeZone() }).format(date);
         }
 
         function escapeHtml(value) {
@@ -1472,7 +1477,7 @@
                 return;
             }
 
-            const sorted = [...records].sort((a, b) => new Date(callRecordTimestamp(b) || 0) - new Date(callRecordTimestamp(a) || 0));
+            const sorted = [...records].sort((a, b) => parseSupabaseTimestamp(callRecordTimestamp(b)).getTime() - parseSupabaseTimestamp(callRecordTimestamp(a)).getTime());
             callRecordsCache = sorted;
 
             tbody.innerHTML = sorted.map((record, index) => {

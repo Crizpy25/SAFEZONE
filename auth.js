@@ -17,6 +17,18 @@ function getCurrentUserID() {
     return sessionStorage.getItem('adminUserID');
 }
 
+function parseSupabaseTimestamp(value) {
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'number') return new Date(value);
+    if (value === null || value === undefined || value === '') return new Date(NaN);
+
+    const text = String(value).trim().replace(' ', 'T');
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+    return new Date(hasTimezone ? text : `${text}Z`);
+}
+
+window.parseSupabaseTimestamp = parseSupabaseTimestamp;
+
 async function handleRegister(event) {
     event.preventDefault();
 
@@ -132,7 +144,7 @@ async function handleLogin(event) {
 
         if (data.is_online === true) {
             if (errorMessage) {
-                errorMessage.textContent = 'This admin account is already logged in.';
+                errorMessage.textContent = 'This admin account is already logged in';
                 errorMessage.classList.remove('hidden');
             }
             const passwordInput = document.getElementById('password');
@@ -151,7 +163,7 @@ async function handleLogin(event) {
         if (claimError) throw claimError;
         if (!claimedAdmin) {
             if (errorMessage) {
-                errorMessage.textContent = 'This admin account is already logged in on another site.';
+                errorMessage.textContent = 'This admin account is already logged in.';
                 errorMessage.classList.remove('hidden');
             }
             const passwordInput = document.getElementById('password');

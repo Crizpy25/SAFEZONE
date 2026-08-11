@@ -580,7 +580,7 @@ function showNewReportToast(report) {
 
     const category = report.category ? report.category.toUpperCase() : 'EMERGENCY';
     const desc = report.description ? `: ${report.description}` : '';
-    const rawTime = report.created_at ? new Date(report.created_at) : new Date();
+    const rawTime = report.created_at ? parseSupabaseTimestamp(report.created_at) : new Date();
     const time = rawTime && !Number.isNaN(rawTime.getTime())
         ? new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawTime)
         : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
@@ -901,7 +901,7 @@ function openNotificationDetailsModal(report) {
     const location = getNotificationLocation(report);
     const timestamp = formatNotificationTimestamp(report);
 
-    const rawDate = new Date(report.created_at || report.updated_at || report.timestamp || new Date());
+    const rawDate = parseSupabaseTimestamp(report.created_at || report.updated_at || report.timestamp || new Date());
     const dateStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(rawDate);
     const timeStr = Number.isNaN(rawDate.getTime()) ? '-' : new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }).format(rawDate);
 
@@ -1073,7 +1073,7 @@ function getNotificationLocation(report) {
 
 function formatNotificationTimestamp(report) {
     const raw = report?.created_at || report?.updated_at || report?.timestamp || new Date().toISOString();
-    const date = new Date(raw);
+    const date = parseSupabaseTimestamp(raw);
     if (Number.isNaN(date.getTime())) return 'Unknown time';
     return `${new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(date)} • ${new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(date)}`;
 }
