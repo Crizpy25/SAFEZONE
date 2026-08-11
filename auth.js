@@ -132,7 +132,7 @@ async function handleLogin(event) {
 
         if (data.is_online === true) {
             if (errorMessage) {
-                errorMessage.textContent = 'This admin account is already logged in on another site.';
+                errorMessage.textContent = 'This admin account is already logged in.';
                 errorMessage.classList.remove('hidden');
             }
             const passwordInput = document.getElementById('password');

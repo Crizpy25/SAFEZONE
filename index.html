@@ -404,7 +404,7 @@
 
                 <div id="analyticsKpis" class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
 
-                <div class="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)]">
+                <div class="grid flex-1 gap-5">
                     <section class="flex min-h-[320px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <div class="border-b border-slate-200 px-5 py-4">
                             <h2 class="font-bold text-slate-900">Reports by Emergency Type</h2>
@@ -413,13 +413,6 @@
                         <div class="flex-1 overflow-x-auto"><table class="min-w-full divide-y divide-slate-200"><thead class="bg-slate-100/80"><tr><th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Incident Type</th><th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Reports</th><th class="min-w-52 px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Volume Share</th><th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Percentage</th></tr></thead><tbody id="analyticsRows" class="divide-y divide-slate-100 bg-white"></tbody></table></div>
                     </section>
 
-                    <section class="flex min-h-[320px] flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div class="mb-5">
-                            <h2 class="font-bold text-slate-900">Reports by Status</h2>
-                            <p class="text-xs text-slate-500">Distribution for the selected time range</p>
-                        </div>
-                        <div id="analyticsStatusBreakdown" class="flex flex-1 flex-col justify-center gap-5"></div>
-                    </section>
                 </div>
 
                 <section class="mt-5 rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -576,9 +569,6 @@
             document.getElementById('analyticsKpis').innerHTML = kpis.map(([label, value, note, color]) => `<article class="flex min-h-28 items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p><p class="mt-2 text-3xl font-bold text-slate-900">${Number(value).toLocaleString()}</p>${note ? `<p class="mt-1 text-xs text-slate-500">${escapeHtml(note)}</p>` : ''}</div><span class="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold ${color}">${rangeTotal ? Math.round(value / rangeTotal * 100) : 0}%</span></article>`).join('');
 
             document.getElementById('analyticsRows').innerHTML = types.length ? types.map(type => `<tr class="cursor-pointer transition hover:bg-blue-50/50" data-category="${escapeHtml(type.name)}" onclick="openAnalyticsDrillDownFromEvent(event)"><td class="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-800">${escapeHtml(type.name)}</td><td class="whitespace-nowrap px-4 py-4"><span class="inline-flex min-w-14 justify-center rounded-full px-2 py-1 text-xs font-bold ring-1 ring-inset ${type.style[1]}">${type.count}</span></td><td class="px-4 py-4"><div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-2.5 rounded-full ${type.style[0]}" style="width:${type.percent}%"></div></div></td><td class="whitespace-nowrap px-4 py-4 text-right text-sm font-bold text-slate-700">${type.percent.toFixed(1)}%</td></tr>`).join('') : '<tr><td colspan="4" class="px-4 py-16 text-center text-sm text-slate-500">No reports found for the selected filters.</td></tr>';
-
-            const statusDisplay = [['Active', statusCounts.ACTIVE, 'bg-sky-500', 'text-sky-700'], ['Resolved', statusCounts.RESOLVED, 'bg-emerald-500', 'text-emerald-700'], ['Cancelled', statusCounts.CANCELLED, 'bg-slate-500', 'text-slate-700']];
-            document.getElementById('analyticsStatusBreakdown').innerHTML = statusDisplay.map(([label, count, bar, text]) => { const percent = rangeTotal ? count / rangeTotal * 100 : 0; return `<div><div class="mb-2 flex items-center justify-between"><span class="text-sm font-semibold ${text}">${label}</span><span class="text-sm font-bold text-slate-800">${count.toLocaleString()} <span class="font-medium text-slate-400">(${percent.toFixed(1)}%)</span></span></div><div class="h-3 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full ${bar}" style="width:${percent}%"></div></div></div>`; }).join('');
 
             const hours = records.reduce((buckets, record) => { const date = new Date(record.created_at); if (!Number.isNaN(date.getTime())) buckets[Math.floor(date.getHours() / 4)]++; return buckets; }, [0, 0, 0, 0, 0, 0]);
             const peak = hours.indexOf(Math.max(...hours));
