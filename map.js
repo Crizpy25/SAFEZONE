@@ -1120,9 +1120,12 @@ function renderNotificationPanel() {
         const imageUrl = getNotificationImageUrl(report);
         const isSelected = String(selectedNotificationId) === String(report.id);
         const description = String(report.description || 'No description provided').slice(0, 140);
+        const clickHandler = status === 'RESOLVED' || status === 'CANCELLED'
+            ? `openNotificationDetails('${report.id}')`
+            : `handleActiveNotificationClick('${report.id}')`;
         return `
             <button type="button"
-                onclick="openNotificationDetails('${report.id}')"
+                onclick="${clickHandler}"
                 class="notification-card w-full rounded-xl border ${isSelected ? 'selected' : 'border-slate-200 bg-white/95'} p-3 text-left shadow-sm hover:border-blue-300 hover:shadow-md">
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex items-start gap-2">
@@ -1139,7 +1142,7 @@ function renderNotificationPanel() {
                     </div>
                 </div>
                 <div class="mt-3 space-y-1.5 text-xs text-slate-600">
-                    ${deviceId ? `<p><span class="font-semibold text-slate-700">Device ID:</span> ${escapeMapHtml(deviceId)}</p>` : ''}
+                    ${deviceId ? `<p><span class="font-semibold text-slate-700">Reporter ID:</span> ${escapeMapHtml(deviceId)}</p>` : ''}
                     <p><span class="font-semibold text-slate-700">Time:</span> ${escapeMapHtml(formatNotificationTimestamp(report))}</p>
                     <p><span class="font-semibold text-slate-700">Location:</span> ${escapeMapHtml(getNotificationLocation(report))}</p>
                     ${report.handled_by ? `<p><span class="font-semibold text-slate-700">Handled By:</span> ${escapeMapHtml(report.handled_by)}</p>` : ''}
@@ -1148,6 +1151,45 @@ function renderNotificationPanel() {
             </button>
         `;
     }).join('');
+}
+
+function handleActiveNotificationClick(id) {
+    const report = window.allIncidents?.find(n => String(n.id) === String(id));
+    if (!report) {
+        console.warn('[Notification] Report not found for id:', id, 'allIncidents:', window.allIncidents);
+        return;
+    }
+
+    const status = normalizeNotificationStatus(report.status);
+    if (status === 'RESOLVED' || status === 'CANCELLED') {
+        openNotificationDetails(id);
+        return;
+    }
+
+    selectedNotificationId = String(id);
+    renderNotificationPanel();
+
+    if (!map) return;
+
+    let marker = null;
+    if (window.incidentLayer) {
+        window.incidentLayer.eachLayer(layer => {
+            if (!marker && String(layer.incidentId) === String(id)) {
+                marker = layer;
+            }
+        });
+    }
+
+    if (marker) {
+        map.flyTo(marker.getLatLng(), 15, { animate: true });
+        return;
+    }
+
+    const lat = Number(report.latitude || report.lat);
+    const lng = Number(report.longitude || report.long || report.longtitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        map.flyTo([lat, lng], 15, { animate: true });
+    }
 }
 
 function selectNotification(id) {
@@ -1602,6 +1644,7 @@ window.showClaimedCallerLocation = showClaimedCallerLocation;
 window.drainPendingRealtimeIncomingAlerts = drainPendingRealtimeIncomingAlerts;
 window.centerMap = centerMap;
 window.selectNotification = selectNotification;
+window.handleActiveNotificationClick = handleActiveNotificationClick;
 window.openNotificationDetails = openNotificationDetails;
 window.closeNotificationDetailsModal = closeNotificationDetailsModal;
 window.markAsResolved = markAsResolved;

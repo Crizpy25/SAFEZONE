@@ -205,7 +205,6 @@
             <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report tracking</p>
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">Report Records</h1>
                     </div>
                     <p id="recordCount" class="text-sm font-medium text-slate-500">Loading reports...</p>
@@ -357,7 +356,7 @@
             <div class="bg-slate-50/95 backdrop-blur rounded-xl p-5 sm:p-6 lg:p-8 min-h-[calc(100vh-80px)] border border-white/70 shadow-2xl shadow-black/10">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Call tracking</p>
+                        
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">Call Records</h1>
                     </div>
                     <p id="callRecordCount" class="text-sm font-medium text-slate-500">Loading calls...</p>
@@ -389,7 +388,6 @@
             <div class="flex min-h-[calc(100vh-80px)] flex-col rounded-xl border border-white/70 bg-slate-50/95 p-5 shadow-2xl shadow-black/10 backdrop-blur sm:p-6 lg:p-8">
                 <div class="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Report tracking</p>
                         <h1 class="text-2xl sm:text-3xl font-bold text-slate-900">System Analytics</h1>
                         <p id="analyticsSummary" class="mt-1 text-sm font-medium text-slate-500">Loading analytics...</p>
                     </div>
@@ -1253,6 +1251,7 @@
                 description: description,
                 latitude: Number(_selectedLatLng.lat),
                 longitude: Number(_selectedLatLng.lng),
+                device_id: 'ADMIN',
                 created_at: now.toISOString(),
                 status: 'active'
             };
@@ -1405,7 +1404,7 @@
             modal.innerHTML = `
                 <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
                     <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                        <div><p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Emergency alert</p><h2 id="callDetailTitle" class="text-lg font-bold text-slate-900">Call details</h2></div>
+                        <div><p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Emergency call</p><h2 id="callDetailTitle" class="text-lg font-bold text-slate-900">Emergency Call Details</h2></div>
                         <button type="button" onclick="closeCallRecordDetails()" class="rounded-md px-3 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100">Close</button>
                     </div>
                     <div id="callDetailContent" class="space-y-4 p-5"></div>
@@ -1431,15 +1430,16 @@
             const title = document.getElementById('callDetailTitle');
             const deviceId = record.device_id || record.deviceId || record.reporter_device_id || record.reporter_device || '-';
             const emergencyType = record.emergency_type || record.type || record.category || '-';
+            const adminName = record.answered_by_admin_fullname || record.handled_by || '-';
             const coordinates = getCallCoordinates(record);
-            title.textContent = `Alert ${record.id || '-'}`;
+            title.textContent = 'Emergency Call Details';
             const fields = [
                 ['Alert ID', record.id], ['Device ID', deviceId],
                 ['Created', callRecordTimestamp(record) ? `${formatDate(callRecordTimestamp(record))} ${formatTime(callRecordTimestamp(record))}` : '-'],
                 ['Latitude', coordinates ? coordinates.latitude : (record.latitude ?? record.lat)], ['Longitude', coordinates ? coordinates.longitude : (record.longitude ?? record.long ?? record.lng)],
-                ['Description', record.description || record.message], ['Handled by', record.handled_by]
+                ['Description', record.description || record.message], ['Admin Name', adminName]
             ].filter(([, value]) => value !== undefined && value !== null && value !== '');
-            const shownKeys = new Set(['id', 'device_id', 'deviceId', 'reporter_device_id', 'reporter_device', 'emergency_type', 'type', 'category', 'status', 'created_at', 'received_at', 'timestamp', 'latitude', 'longitude', 'description', 'message', 'handled_by', 'caller_phone', 'callerPhone', 'phone', 'phone_number']);
+            const shownKeys = new Set(['id', 'device_id', 'deviceId', 'reporter_device_id', 'reporter_device', 'emergency_type', 'type', 'category', 'status', 'created_at', 'received_at', 'timestamp', 'latitude', 'longitude', 'description', 'message', 'handled_by', 'answered_by_admin_fullname', 'caller_peer_id', 'callerPeerId', 'peer_id', 'peerId', 'caller_phone', 'callerPhone', 'phone', 'phone_number']);
             Object.entries(record).forEach(([key, value]) => {
                 if (!shownKeys.has(key) && value !== undefined && value !== null && value !== '') fields.push([key.replace(/_/g, ' '), typeof value === 'object' ? JSON.stringify(value) : value]);
             });
