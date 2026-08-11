@@ -467,6 +467,13 @@ function installPeerCallHandlers(peer) {
         // differ. While this admin is ringing and has no media call yet, let
         // the incoming MediaConnection attach to that visible call panel.
         const peerAlertId = call.metadata?.alertId || call.metadata?.emergencyAlertId || call.metadata?.alert_id;
+        const peerLatitude = call.metadata?.latitude ?? call.metadata?.lat ?? adminState.incomingAlert?.latitude ?? adminState.incomingAlert?.lat;
+        const peerLongitude = call.metadata?.longitude ?? call.metadata?.long ?? call.metadata?.lng ?? adminState.incomingAlert?.longitude ?? adminState.incomingAlert?.long ?? adminState.incomingAlert?.lng;
+        if (!isInsideIloiloCityLocation(peerLatitude, peerLongitude)) {
+            console.warn('[PeerJS] Rejecting incoming call outside Iloilo City:', { callerPeerId: call.peer, latitude: peerLatitude, longitude: peerLongitude });
+            call.close();
+            return;
+        }
         if (peerAlertId && (adminState.claimedAlertIds.has(String(peerAlertId)) || adminState.declinedAlertIds.has(String(peerAlertId)))) {
             console.warn('[PeerJS] Closing call already claimed elsewhere or declined here:', peerAlertId);
             call.close();
@@ -520,8 +527,8 @@ function handleIncomingPeerCallUI(deviceId) {
     prepareIncomingCallControls();
     adminState.pendingIncomingUi = true;
     ensureIncomingCallUI();
-    setStatus(deviceId ? `Incoming call from ${deviceId}` : 'Incoming call...');
-    if (dom.incomingTitle) dom.incomingTitle.textContent = deviceId ? `Incoming call (${deviceId})` : 'Incoming call';
+    setStatus('Incoming call...');
+    if (dom.incomingTitle) dom.incomingTitle.textContent = 'Incoming call';
     playIncomingRingtone();
     console.log('[WebRTC] Incoming call displayed:', { callerPeerId: adminState.callerPeerId, callId: adminState.incomingCallId, deviceId });
 }
@@ -548,6 +555,15 @@ function getCallerDisplayId(record) {
     return !normalized || ['no number', 'no phone number', 'unknown', 'n/a', 'none'].includes(normalized)
         ? null
         : String(value).trim();
+}
+
+function isInsideIloiloCityLocation(latitude, longitude) {
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    return Number.isFinite(lat)
+        && Number.isFinite(lng)
+        && typeof window.isPointInPolygon === 'function'
+        && window.isPointInPolygon(lat, lng);
 }
 
 function maintainOwnedAcceptedCall(record) {
@@ -595,6 +611,13 @@ function handleEmergencyAlertIncomingCall(record, { source = 'unknown', eventTyp
     }
     const isCurrentAlert = String(adminState.activeAlertId || '') === String(record.id)
         || String(adminState.incomingAlert?.id || '') === String(record.id);
+    if (!isInsideIloiloCityLocation(latitude, longitude)) {
+        if (isCurrentAlert) {
+            endCurrentCall('outside-iloilo-city', { notifyRemote: false, updateStatus: false });
+        }
+        console.warn('[Incoming Call] Rejected alert outside Iloilo City:', { alertId: record.id, latitude, longitude });
+        return;
+    }
     if (isEndedEmergencyAlert(record)) {
         if (isCurrentAlert) {
             console.log('[Call Cleanup] Alert ended/cancelled; removing call UI');
@@ -676,8 +699,8 @@ function handleEmergencyAlertIncomingCall(record, { source = 'unknown', eventTyp
     console.log('[Incoming Call] UI handler started', record);
     transitionTo(CALL_STATES.RINGING, 'emergency_alerts incoming call');
     ensureIncomingCallUI();
-    setStatus(callerDeviceId ? `Incoming call from ${callerDeviceId}` : 'Incoming call...');
-    if (dom.incomingTitle) dom.incomingTitle.textContent = callerDeviceId ? `Incoming call (${callerDeviceId})` : 'Incoming call';
+    setStatus('Incoming call...');
+    if (dom.incomingTitle) dom.incomingTitle.textContent = 'Incoming call';
     playIncomingRingtone();
     console.log('[Call Debug] Waiting → Incoming');
 }
@@ -1347,10 +1370,8 @@ function handleCallOffer(callId, from, to, sdp, callerDeviceId = null, callerLoc
     if (isDashboard()) {
         adminState.pendingIncomingUi = true;
         ensureIncomingCallUI();
-        setStatus(callerDeviceId ? `Incoming call from ${callerDeviceId}` : 'Incoming call...');
-        if (dom.incomingTitle) dom.incomingTitle.textContent = callerDeviceId
-            ? `Incoming call (${callerDeviceId})`
-            : 'Incoming call';
+        setStatus('Incoming call...');
+        if (dom.incomingTitle) dom.incomingTitle.textContent = 'Incoming call';
         playIncomingRingtone();
     }
     console.log('[WebRTC] Incoming call displayed:', { from, callId, callerDeviceId });
