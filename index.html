@@ -80,6 +80,12 @@
                     Analytics
                 </a>
             </li>
+            <li>
+                <a href="#stations" onclick="switchView('stations'); return false;" id="nav-stations" class="flex items-center gap-3 text-white font-bold hover:bg-gray-400 px-8 py-4">
+                    <img src="images/contact-info.png" alt="" class="w-5 h-5 shrink-0 object-contain" onerror="this.style.visibility='hidden'">
+                    Stations
+                </a>
+            </li>
         </ul>
 
         <div class="mt-auto border-t border-white/30 p-4">
@@ -429,7 +435,86 @@
             </div>
         </div>
 
+        <div id="view-stations" class="hidden">
+            <div class="min-h-[calc(100vh-80px)] rounded-xl border border-white/70 bg-slate-50/95 p-5 shadow-2xl shadow-black/10 backdrop-blur sm:p-6 lg:p-8">
+                <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900 sm:text-3xl">Station Management</h1>
+                        <p class="mt-1 text-sm text-slate-500">Add, edit, or remove police, fire, and hospital stations.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="loadStationAdminTable()" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Refresh</button>
+                        <button type="button" onclick="openStationModal()" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500">Add Station</button>
+                    </div>
+                </div>
+
+                <p id="stationAdminStatus" class="mb-3 text-sm font-medium text-slate-500">Loading stations...</p>
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200">
+                            <thead class="bg-slate-100/80">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Station Name</th>
+                                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Type</th>
+                                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Phone Number</th>
+                                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Latitude</th>
+                                    <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Longitude</th>
+                                    <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stationAdminRows" class="divide-y divide-slate-100 bg-white"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+
     </main>
+
+    <div id="stationModal" class="fixed inset-0 z-[9998] hidden items-center justify-center bg-black/60 p-4" onclick="closeStationModal()">
+        <div class="w-full max-w-lg rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Station information</p>
+                    <h2 id="stationModalTitle" class="text-xl font-bold text-slate-900">Add Station</h2>
+                </div>
+                <button type="button" onclick="closeStationModal()" class="rounded-lg px-2 py-1 text-2xl leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">&times;</button>
+            </div>
+            <form id="stationForm" class="space-y-4 p-5">
+                <input type="hidden" id="stationId">
+                <div>
+                    <label for="stationName" class="mb-1 block text-sm font-semibold text-slate-700">Station Name</label>
+                    <input id="stationName" required maxlength="150" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                </div>
+                <div>
+                    <label for="stationType" class="mb-1 block text-sm font-semibold text-slate-700">Station Type</label>
+                    <select id="stationType" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                        <option value="police">Police</option>
+                        <option value="fire">Fire</option>
+                        <option value="hospital">Hospital</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="stationPhoneNumber" class="mb-1 block text-sm font-semibold text-slate-700">Phone Number</label>
+                    <input id="stationPhoneNumber" type="tel" maxlength="40" placeholder="e.g. 0998-598-6242" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="stationLatitude" class="mb-1 block text-sm font-semibold text-slate-700">Latitude</label>
+                        <input id="stationLatitude" required type="number" step="any" min="-90" max="90" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                    </div>
+                    <div>
+                        <label for="stationLongitude" class="mb-1 block text-sm font-semibold text-slate-700">Longitude</label>
+                        <input id="stationLongitude" required type="number" step="any" min="-180" max="180" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 border-t border-slate-200 pt-4">
+                    <button type="button" onclick="closeStationModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cancel</button>
+                    <button id="stationSubmitButton" type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500">Save Station</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div id="imageLightbox" class="hidden fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4" onclick="closeLightbox()">
         <div class="relative max-w-4xl max-h-[90vh]" onclick="event.stopPropagation()">
@@ -467,8 +552,9 @@
             document.getElementById('view-reports').classList.add('hidden');
             document.getElementById('view-calls').classList.add('hidden');
             document.getElementById('view-analytics').classList.add('hidden');
+            document.getElementById('view-stations').classList.add('hidden');
 
-            ['dashboard', 'reports', 'calls', 'analytics'].forEach((name) => {
+            ['dashboard', 'reports', 'calls', 'analytics', 'stations'].forEach((name) => {
                 const nav = document.getElementById('nav-' + name);
                 nav.classList.remove('bg-gray-600');
                 nav.classList.add('hover:bg-gray-400');
@@ -500,6 +586,8 @@
                 }
             } else if (view === 'analytics') {
                 loadAnalytics();
+            } else if (view === 'stations') {
+                loadStationAdminTable();
             }
 
             if (typeof window.closeCreateReportModal === 'function') {
@@ -508,6 +596,183 @@
 
             if (window.location.hash !== '#' + view) window.history.replaceState(null, '', '#' + view);
         }
+
+        let stationAdminRecords = [];
+
+        function stationAdminEscape(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            }[character]));
+        }
+
+        function stationTypeLabel(type) {
+            return String(type || '').charAt(0).toUpperCase() + String(type || '').slice(1);
+        }
+
+        function renderStationAdminRows() {
+            const rows = document.getElementById('stationAdminRows');
+            if (!rows) return;
+
+            if (!stationAdminRecords.length) {
+                rows.innerHTML = '<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">No stations found.</td></tr>';
+                return;
+            }
+
+            rows.innerHTML = stationAdminRecords.map((station) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-3 text-sm font-semibold text-slate-800">${stationAdminEscape(station.station_name)}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">${stationAdminEscape(stationTypeLabel(station.station_type))}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">${stationAdminEscape(station.phone_number || 'Not Available')}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">${stationAdminEscape(station.latitude)}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600">${stationAdminEscape(station.longitude)}</td>
+                    <td class="px-4 py-3 text-right text-sm">
+                        <button type="button" data-station-action="edit" data-station-id="${stationAdminEscape(station.id)}" class="mr-3 font-semibold text-blue-600 hover:text-blue-800">Edit</button>
+                        <button type="button" data-station-action="delete" data-station-id="${stationAdminEscape(station.id)}" class="font-semibold text-red-600 hover:text-red-800">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            rows.querySelectorAll('[data-station-action]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const station = stationAdminRecords.find(item => String(item.id) === String(button.dataset.stationId));
+                    if (!station) return;
+                    if (button.dataset.stationAction === 'edit') openStationModal(station);
+                    if (button.dataset.stationAction === 'delete') deleteStation(station);
+                });
+            });
+        }
+
+        async function loadStationAdminTable() {
+            const rows = document.getElementById('stationAdminRows');
+            const status = document.getElementById('stationAdminStatus');
+            if (!rows || !status) return;
+            if (!window.supabaseClient) {
+                status.textContent = 'Supabase is not available.';
+                return;
+            }
+
+            status.textContent = 'Loading stations...';
+            const { data, error } = await window.supabaseClient
+                .from('stations')
+                .select('*')
+                .order('station_type')
+                .order('station_name');
+
+            if (error) {
+                console.error('Error loading station management records:', error);
+                status.textContent = 'Unable to load stations.';
+                rows.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-red-500">${stationAdminEscape(error.message)}</td></tr>`;
+                return;
+            }
+
+            stationAdminRecords = Array.isArray(data) ? data : [];
+            status.textContent = `${stationAdminRecords.length} station${stationAdminRecords.length === 1 ? '' : 's'}`;
+            renderStationAdminRows();
+        }
+
+        function openStationModal(station = null) {
+            const modal = document.getElementById('stationModal');
+            const form = document.getElementById('stationForm');
+            if (!modal || !form) return;
+
+            document.getElementById('stationId').value = station?.id || '';
+            document.getElementById('stationName').value = station?.station_name || '';
+            document.getElementById('stationType').value = station?.station_type || 'police';
+            document.getElementById('stationPhoneNumber').value = station?.phone_number || '';
+            document.getElementById('stationLatitude').value = station?.latitude ?? '';
+            document.getElementById('stationLongitude').value = station?.longitude ?? '';
+            document.getElementById('stationModalTitle').textContent = station ? 'Edit Station' : 'Add Station';
+            document.getElementById('stationSubmitButton').textContent = station ? 'Save Changes' : 'Save Station';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('stationName').focus();
+        }
+
+        function closeStationModal() {
+            const modal = document.getElementById('stationModal');
+            const form = document.getElementById('stationForm');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            if (form) form.reset();
+        }
+
+        async function refreshMapStationsAfterChange() {
+            if (typeof window.reloadStationData === 'function') {
+                await window.reloadStationData();
+            }
+        }
+
+        async function handleStationFormSubmit(event) {
+            event.preventDefault();
+            const submitButton = document.getElementById('stationSubmitButton');
+            const id = document.getElementById('stationId').value;
+            const latitude = Number(document.getElementById('stationLatitude').value);
+            const longitude = Number(document.getElementById('stationLongitude').value);
+            const station = {
+                station_name: document.getElementById('stationName').value.trim(),
+                station_type: document.getElementById('stationType').value,
+                phone_number: document.getElementById('stationPhoneNumber').value.trim(),
+                latitude,
+                longitude
+            };
+
+            if (!station.station_name || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                showToast('Please enter a valid station name and coordinates.', 'error');
+                return;
+            }
+
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'Saving...';
+            }
+
+            try {
+                const request = id
+                    ? window.supabaseClient.from('stations').update(station).eq('id', id)
+                    : window.supabaseClient.from('stations').insert([station]);
+                const { error } = await request;
+                if (error) throw error;
+
+                closeStationModal();
+                showToast(id ? 'Station updated successfully.' : 'Station added successfully.', 'success');
+                await loadStationAdminTable();
+                await refreshMapStationsAfterChange();
+            } catch (error) {
+                console.error('Error saving station:', error);
+                showToast(error.message || 'Unable to save station.', 'error');
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = id ? 'Save Changes' : 'Save Station';
+                }
+            }
+        }
+
+        async function deleteStation(station) {
+            if (!confirm(`Delete ${station.station_name}?`)) return;
+            const { error } = await window.supabaseClient
+                .from('stations')
+                .delete()
+                .eq('id', station.id);
+
+            if (error) {
+                console.error('Error deleting station:', error);
+                showToast(error.message || 'Unable to delete station.', 'error');
+                return;
+            }
+
+            showToast('Station deleted successfully.', 'success');
+            await loadStationAdminTable();
+            await refreshMapStationsAfterChange();
+        }
+
+        document.getElementById('stationForm')?.addEventListener('submit', handleStationFormSubmit);
 
         const analyticsPresentation = {
             Fire: ['bg-red-500', 'bg-red-50 text-red-700 ring-red-600/20', 'bg-red-50 text-red-600'],

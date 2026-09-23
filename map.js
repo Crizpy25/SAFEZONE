@@ -162,61 +162,95 @@ function initializeMap() {
     window.blueIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png');
     window.greenIcon = markerIcon('https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png');
 
-    const stations = [
-        { name: 'PS1 City Proper', lat: 10.701501994092405, lng: 122.56369039944839, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS2 La Paz', lat: 10.70552222109631, lng: 122.56549995693831, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS3 Jaro', lat: 10.735918109716387, lng: 122.55998972270376, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS4 Molo', lat: 10.698346304433658, lng: 122.55105476464729, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS5 Mandurriao', lat: 10.71683400704982, lng: 122.53648059623264, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS6 Arevalo', lat: 10.68890021276814, lng: 122.51886825833218, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS7 City Proper', lat: 10.693697669664308, lng: 122.5578915097894, icon: policeIcon, layer: window.policeLayer },
-        { name: 'PS8 Brgy. Obrero', lat: 10.696296224219786, lng: 122.58505698638052, icon: policeIcon, layer: window.policeLayer },
-        { name: 'ICPO Police Station 9', lat: 10.726572389429572, lng: 122.56519373620795, icon: policeIcon, layer: window.policeLayer },
-        { name: 'ICPO Police Station 10', lat: 10.70553584277189, lng: 122.55517513417514, icon: policeIcon, layer: window.policeLayer },
-        { name: 'ICARE Fire station', lat: 10.705088291583916, lng: 122.55490712638891, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Alta Tierra Fire Sub-station', lat: 10.739664436279549, lng: 122.56651531888511, icon: fireIcons, layer: window.fireLayer },
-        { name: 'La Paz Fire Sub-Station', lat: 10.712651852092284, lng: 122.57295111469945, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Federation Iloilo Fire Station', lat: 10.697089988322267, lng: 122.56487023547012, icon: fireIcons, layer: window.fireLayer },
-        { name: 'BFP Iloilo', lat: 10.689280564358054, lng: 122.58153763103257, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Bo. Obrero Fire Sub-Station', lat: 10.70033104702452, lng: 122.58796764071114, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Mandurriao Fire Sub-Station', lat: 10.719211489646474, lng: 122.53920666146492, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Arevalo Fire Sub-Station', lat: 10.688797426748417, lng: 122.51626529021178, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Sto. Niño Sur Fire Sub-Station', lat: 10.68223713089546, lng: 122.5099533777009, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Old Molo Fire Station', lat: 10.697030999439814, lng: 122.5488881609591, icon: fireIcons, layer: window.fireLayer },
-        { name: 'San Isidro Fire Sub-Station', lat: 10.736444550002995, lng: 122.5458557423291, icon: fireIcons, layer: window.fireLayer },
-        { name: 'BFP JARO FIRE SUB STATION', lat: 10.725305477601013, lng: 122.55751243802833, icon: fireIcons, layer: window.fireLayer },
-        { name: 'Western Visayas Medical Center (Public)', lat: 10.718885489071287, lng: 122.54193891896666, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: 'Iloilo Mission Hospital', lat: 10.714817707214994, lng: 122.56058274040979, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: "St. Paul's Hospital Iloilo", lat: 10.702011896133618, lng: 122.56694877109325, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: "Iloilo Doctors' Hospital", lat: 10.696804152759018, lng: 122.55440768089073, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: 'The Medical City Iloilo', lat: 10.699644543003238, lng: 122.54277137544258, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: 'West Visayas State University Medical Center', lat: 10.717168244196454, lng: 122.56120580362972, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: 'QualiMed Hospital Iloilo', lat: 10.706542561402188, lng: 122.54782241379408, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: 'Medicus Medical Center', lat: 10.702756754480117, lng: 122.55224702393059, icon: hospitalIcon, layer: window.hospitalLayer },
-        { name: "AMOSUP Seamen's Hospital", lat: 10.714828158629505, lng: 122.53455543124073, icon: hospitalIcon, layer: window.hospitalLayer }
-    ];
+    async function loadStations() {
+        if (!window.supabaseClient) {
+            console.error('Supabase client is not initialized');
+            return;
+        }
 
-    stations.forEach(s => {
-        if (!isPointInPolygon(s.lat, s.lng)) return;
-        const contactText = getStationContact(s.name) || 'Not Available';
-        const popupHtml = `<div style="font-size:13px; color:#0f172a; font-weight:700; margin-bottom:4px;">${escapeMapHtml(s.name)}</div>
-                           <div style="font-size:12px; color:#334155;">Contact Number: <span style="font-weight:700; color:#000000;">${escapeMapHtml(contactText)}</span></div>`;
-        L.marker([s.lat, s.lng], { icon: s.icon }).addTo(s.layer).bindPopup(popupHtml);
-    });
+        const { data: stations, error } = await window.supabaseClient
+            .from('stations')
+            .select('*')
+            .order('station_type')
+            .order('station_name');
 
-    window.emergencyAgencyData = {
-        Police: stations.filter(s => s.layer === window.policeLayer).map(s => [s.name, s.lat, s.lng]),
-        Fire: stations.filter(s => s.layer === window.fireLayer).map(s => [s.name, s.lat, s.lng]),
-        Medic: stations.filter(s => s.layer === window.hospitalLayer).map(s => [s.name, s.lat, s.lng])
-    };
+        if (error) {
+            console.error('Error loading stations:', error);
+            return;
+        }
 
-    window.validAgencies = {};
-    for (const [type, agencies] of Object.entries(window.emergencyAgencyData)) {
-        window.validAgencies[type] = agencies.filter(([, lat, lng]) => isPointInPolygon(lat, lng));
+        // Clear existing station markers so refreshing does not create duplicates.
+        window.policeLayer.clearLayers();
+        window.fireLayer.clearLayers();
+        window.hospitalLayer.clearLayers();
+
+        const emergencyAgencyData = {
+            Police: [],
+            Fire: [],
+            Medic: []
+        };
+
+        (stations || []).forEach(station => {
+            const lat = Number(station.latitude);
+            const lng = Number(station.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || !isPointInPolygon(lat, lng)) return;
+
+            let icon;
+            let layer;
+            let agencyType;
+
+            switch (station.station_type) {
+                case 'police':
+                    icon = policeIcon;
+                    layer = window.policeLayer;
+                    agencyType = 'Police';
+                    break;
+
+                case 'fire':
+                    icon = fireIcons;
+                    layer = window.fireLayer;
+                    agencyType = 'Fire';
+                    break;
+
+                case 'hospital':
+                    icon = hospitalIcon;
+                    layer = window.hospitalLayer;
+                    agencyType = 'Medic';
+                    break;
+
+                default:
+                    console.warn('Unknown station type:', station.station_type);
+                    return;
+            }
+
+            const contactText = station.phone_number || getStationContact(station.station_name) || 'Not Available';
+            const popupHtml = `<div style="font-size:13px; color:#0f172a; font-weight:700; margin-bottom:4px;">${escapeMapHtml(station.station_name)}</div>
+                               <div style="font-size:12px; color:#334155;">Contact Number: <span style="font-weight:700; color:#000000;">${escapeMapHtml(contactText)}</span></div>`;
+            const marker = L.marker([lat, lng], { icon });
+            marker.addTo(layer);
+            marker.bindPopup(popupHtml);
+            emergencyAgencyData[agencyType].push([station.station_name, lat, lng, station.phone_number || null]);
+        });
+
+        window.emergencyAgencyData = emergencyAgencyData;
+        window.validAgencies = {};
+        for (const [type, agencies] of Object.entries(window.emergencyAgencyData)) {
+            window.validAgencies[type] = agencies.filter(([, agencyLat, agencyLng]) => isPointInPolygon(agencyLat, agencyLng));
+        }
     }
 
-    loadReports();
-    renderActiveCallerMarkers();
+    window.reloadStationData = async function reloadStationData() {
+        await loadStations();
+        await loadReports();
+        renderActiveCallerMarkers();
+    };
+
+    loadStations()
+        .then(() => {
+            loadReports();
+            renderActiveCallerMarkers();
+        })
+        .catch(error => console.error('Exception loading stations:', error));
 
     setTimeout(() => {
         try { map.invalidateSize(); } catch (e) { /* ignore */ }
@@ -470,9 +504,10 @@ function getNearestAgencies(category, lat, lng, limit = 3) {
     if (!agencyType || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
 
     return agencies
-        .map(([name, aLat, aLng]) => ({
+        .map(([name, aLat, aLng, hotline]) => ({
             name,
             type: agencyType,
+            hotline: hotline || getStationContact(name),
             distanceKm: calculateDistanceKm(latitude, longitude, aLat, aLng)
         }))
         .sort((a, b) => a.distanceKm - b.distanceKm)
@@ -542,7 +577,7 @@ function getRecommendedPoliceStation(lat, lng) {
     const nearest = results[0];
     return {
         name: nearest.name,
-        hotline: getStationContact(nearest.name),
+        hotline: nearest.hotline || getStationContact(nearest.name),
         distanceKm: nearest.distanceKm
     };
 }
@@ -553,7 +588,7 @@ function getRecommendedFireStation(lat, lng) {
     const nearest = results[0];
     return {
         name: nearest.name,
-        hotline: getStationContact(nearest.name),
+        hotline: nearest.hotline || getStationContact(nearest.name),
         distanceKm: nearest.distanceKm
     };
 }
@@ -564,7 +599,7 @@ function getRecommendedHospital(lat, lng) {
     const nearest = results[0];
     return {
         name: nearest.name,
-        hotline: getStationContact(nearest.name),
+        hotline: nearest.hotline || getStationContact(nearest.name),
         distanceKm: nearest.distanceKm
     };
 }
