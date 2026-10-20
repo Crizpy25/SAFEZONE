@@ -496,6 +496,12 @@ function formatDistance(distanceKm) {
     return distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m away` : `${distanceKm.toFixed(2)} km away`;
 }
 
+function getAvailableStationCount(category) {
+    const agencyType = normalizeEmergencyCategory(category);
+    if (!agencyType) return 0;
+    return Array.isArray(window.validAgencies?.[agencyType]) ? window.validAgencies[agencyType].length : 0;
+}
+
 function getNearestAgencies(category, lat, lng, limit = 3) {
     const agencyType = normalizeEmergencyCategory(category);
     const agencies = window.validAgencies?.[agencyType] || [];
@@ -1364,6 +1370,7 @@ function getIncidentPopupHtml(report, id) {
                 ? getRecommendedFireStation(lat, lng)
                 : getRecommendedHospital(lat, lng)
         : null;
+    const stationCount = getAvailableStationCount(report.category);
     const recommendedHtml = recommended ? `
         <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:8px;">
             <div style="font-size:11px; font-weight:700; color:#0f172a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
@@ -1373,6 +1380,7 @@ function getIncidentPopupHtml(report, id) {
                 <div style="font-weight:700; color:#0f172a;">${escapeMapHtml(recommended.name)}</div>
                 <div style="font-size:12px; color:#64748b; margin-top:2px;">📏 ${escapeMapHtml(formatDistance(recommended.distanceKm))}</div>
                 <div style="font-size:12px; color:#64748b; margin-top:6px;">Contact Number: <span style="font-weight:700; color:#000000;">${escapeMapHtml(recommended.hotline || 'Not Available')}</span></div>
+                <div style="font-size:12px; color:#64748b; margin-top:6px;">Available Stations: <span style="font-weight:700; color:#000000;">${stationCount}</span></div>
             </div>
         </div>
     ` : '';
