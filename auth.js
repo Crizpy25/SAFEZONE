@@ -20,6 +20,52 @@ function getCurrentUserID() {
     return sessionStorage.getItem('adminUserID');
 }
 
+function clearLocalAuthState() {
+    const sessionKeys = [
+        'adminLoggedIn',
+        'adminUser',
+        'adminUserID',
+        'adminFullName',
+        'loginTime',
+        'adminPeerId',
+        'skipPeerCleanup'
+    ];
+
+    sessionKeys.forEach((key) => sessionStorage.removeItem(key));
+    sessionStorage.clear();
+
+    for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('sb-') || key.startsWith('supabase') || key.includes('supabase') || key.includes('sb_')) {
+            localStorage.removeItem(key);
+        }
+    }
+
+    localStorage.removeItem('adminLoggedIn');
+    localStorage.removeItem('adminUser');
+    localStorage.removeItem('adminUserID');
+    localStorage.removeItem('adminFullName');
+    localStorage.removeItem('loginTime');
+    localStorage.removeItem('adminPeerId');
+    localStorage.removeItem('skipPeerCleanup');
+}
+
+async function resetAdminOnlineStatus(userID) {
+    if (!userID || !db) return;
+
+    const { error } = await db
+        .from('admins')
+        .update({
+            is_online: false,
+            call_status: 'offline',
+            peer_id: null,
+            last_seen: new Date().toISOString(),
+            last_login: new Date().toISOString()
+        })
+        .eq('id', userID);
+
+    if (error) throw error;
+}
+
 function parseSupabaseTimestamp(value) {
     if (value instanceof Date) return new Date(value.getTime());
     if (typeof value === 'number') return new Date(value);
@@ -203,8 +249,19 @@ async function logout() {
     const userID = getCurrentUserID();
 
     try {
+        if (db && db.auth) {
+            const { error: signOutError } = await db.auth.signOut({ scope: 'global' });
+            if (signOutError) {
+                console.error('Supabase signOut failed:', signOutError);
+            }
+        }
+    } catch (err) {
+        console.error('Unexpected error while signing out from Supabase auth:', err);
+    }
+
+    try {
         if (userID) {
-            await db.from('admins').update({ is_online: false, last_login: new Date().toISOString() }).eq('id', userID);
+            await resetAdminOnlineStatus(userID);
         }
         if (typeof window.cleanupAdminSession === 'function') {
             await window.cleanupAdminSession();
@@ -213,12 +270,7 @@ async function logout() {
         console.error('Error during logout cleanup:', err);
     }
 
-    sessionStorage.removeItem('adminLoggedIn');
-    sessionStorage.removeItem('adminUser');
-    sessionStorage.removeItem('adminUserID');
-    sessionStorage.removeItem('adminFullName');
-    sessionStorage.removeItem('loginTime');
-
+    clearLocalAuthState();
     window.location.href = 'login.html';
 }
 
