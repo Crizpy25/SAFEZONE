@@ -1197,23 +1197,8 @@ function renderNotificationPanel() {
     }).join('');
 }
 
-function handleActiveNotificationClick(id) {
-    const report = window.allIncidents?.find(n => String(n.id) === String(id));
-    if (!report) {
-        console.warn('[Notification] Report not found for id:', id, 'allIncidents:', window.allIncidents);
-        return;
-    }
-
-    const status = normalizeNotificationStatus(report.status);
-    if (status === 'RESOLVED' || status === 'CANCELLED') {
-        openNotificationDetails(id);
-        return;
-    }
-
-    selectedNotificationId = String(id);
-    renderNotificationPanel();
-
-    if (!map) return;
+function focusReportOnMap(id, report) {
+    if (!map) return false;
 
     let marker = null;
     if (window.incidentLayer) {
@@ -1225,15 +1210,44 @@ function handleActiveNotificationClick(id) {
     }
 
     if (marker) {
-        map.flyTo(marker.getLatLng(), 15, { animate: true });
+        const latLng = marker.getLatLng();
+        map.flyTo(latLng, 15, { animate: true });
+        try {
+            marker.fire('click');
+        } catch (error) {
+            console.warn('[Notification] Failed to trigger marker click for report:', id, error);
+            marker.openPopup();
+        }
+        return true;
+    }
+
+    const lat = Number(report?.latitude ?? report?.lat);
+    const lng = Number(report?.longitude ?? report?.long ?? report?.longtitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        map.flyTo([lat, lng], 15, { animate: true });
+        return true;
+    }
+
+    return false;
+}
+
+function handleActiveNotificationClick(id) {
+    const report = window.allIncidents?.find(n => String(n.id) === String(id));
+    if (!report) {
+        console.warn('[Notification] Report not found for id:', id, 'allIncidents:', window.allIncidents);
         return;
     }
 
-    const lat = Number(report.latitude || report.lat);
-    const lng = Number(report.longitude || report.long || report.longtitude);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        map.flyTo([lat, lng], 15, { animate: true });
+    const status = normalizeNotificationStatus(report.status);
+    if (status === 'RESOLVED' || status === 'CANCELLED') {
+        openNotificationDetails(id);
+        focusReportOnMap(id, report);
+        return;
     }
+
+    selectedNotificationId = String(id);
+    renderNotificationPanel();
+    focusReportOnMap(id, report);
 }
 
 function selectNotification(id) {
@@ -1293,6 +1307,9 @@ function openNotificationDetails(id) {
         return;
     }
 
+    if (map) {
+        focusReportOnMap(id, report);
+    }
     openNotificationDetailsModal(report);
 }
 

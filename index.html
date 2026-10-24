@@ -1740,6 +1740,17 @@
         let callDetailMap = null;
         let callDetailMarker = null;
 
+        function isAcceptedCallRecord(record) {
+            const rawStatus = String(record?.status || '').toLowerCase().trim();
+            return rawStatus.includes('accept') || rawStatus.includes('answer') || rawStatus.includes('connect')
+                || Boolean(record?.accepted_at || record?.answered_by_admin_id || record?.handled_by_admin_id || record?.handled_by);
+        }
+
+        function isCancelledCallRecord(record) {
+            const rawStatus = String(record?.status || '').toLowerCase().trim();
+            return rawStatus.includes('cancel') || rawStatus.includes('reject') || rawStatus.includes('declin');
+        }
+
         async function getCallRecords() {
             if (!window.supabaseClient) {
                 const error = new Error('Supabase client is not available');
@@ -1760,7 +1771,7 @@
                     console.error('[Call Records] Database error:', error);
                     return { records: [], error };
                 }
-                const records = data || [];
+                const records = (data || []).filter((record) => isAcceptedCallRecord(record) || isCancelledCallRecord(record));
                 console.log('[Call Records] Records retrieved:', records);
                 console.log('[Call Records] Number of rows returned:', records.length);
                 console.log('[Call Records] emergency_alerts sample:', records[0] || null);
@@ -1810,18 +1821,13 @@
         }
 
         function getCallStatus(record) {
-            const rawStatus = String(record?.status || '').toLowerCase().trim();
-            if (rawStatus.includes('cancel') || rawStatus.includes('reject') || rawStatus.includes('declin')) {
+            if (isCancelledCallRecord(record)) {
                 return { label: 'Cancelled', classes: 'bg-rose-100 text-rose-700' };
             }
-            if (rawStatus.includes('accept') || rawStatus.includes('answer') || rawStatus.includes('connect')
-                || record?.accepted_at || record?.answered_by_admin_id || record?.handled_by_admin_id || record?.handled_by) {
+            if (isAcceptedCallRecord(record)) {
                 return { label: 'Accepted', classes: 'bg-emerald-100 text-emerald-700' };
             }
-            if (rawStatus.includes('resolv') || rawStatus.includes('complet') || rawStatus.includes('end')) {
-                return { label: 'Completed', classes: 'bg-slate-100 text-slate-700' };
-            }
-            return { label: 'Waiting', classes: 'bg-amber-100 text-amber-700' };
+            return { label: 'Accepted', classes: 'bg-emerald-100 text-emerald-700' };
         }
 
         function getCallStatusBadge(record) {

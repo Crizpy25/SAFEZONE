@@ -324,7 +324,13 @@ async function removeAdvertisedPeerId(peerId, reason) {
     if (!adminState.adminId || !window.supabaseClient) return;
     const { error } = await window.supabaseClient
         .from('admins')
-        .update({ is_online: false, call_status: CALL_STATUS.offline, peer_id: null, last_seen: new Date().toISOString() })
+        .update({
+            is_online: false,
+            is_logged_in: false,
+            call_status: CALL_STATUS.offline,
+            peer_id: null,
+            last_seen: new Date().toISOString()
+        })
         .eq('id', adminState.adminId)
         .eq('peer_id', peerId);
     if (error) console.error('[PeerJS] Failed to remove stale Peer ID:', { peerId, reason, error });
@@ -336,7 +342,13 @@ async function withdrawStalePeerAdvertisement() {
     if (!storedAdminId || !window.supabaseClient) return;
     const { error } = await window.supabaseClient
         .from('admins')
-        .update({ is_online: false, call_status: CALL_STATUS.offline, peer_id: null, last_seen: new Date().toISOString() })
+        .update({
+            is_online: false,
+            is_logged_in: false,
+            call_status: CALL_STATUS.offline,
+            peer_id: null,
+            last_seen: new Date().toISOString()
+        })
         .eq('id', storedAdminId);
     if (error) throw error;
     console.log('[PeerJS] Removed any stale advertised Peer ID before initialization');
@@ -1047,6 +1059,7 @@ async function restoreAvailableAdminState(reason) {
             .from('admins')
             .update({
                 is_online: true,
+                is_logged_in: true,
                 call_status: CALL_STATUS.available,
                 peer_id: adminState.peerId,
                 last_seen: new Date().toISOString()
@@ -1066,6 +1079,7 @@ async function clearAdminSession() {
             .from('admins')
             .update({
                 is_online: false,
+                is_logged_in: false,
                 call_status: CALL_STATUS.offline,
                 peer_id: null,
                 last_seen: new Date().toISOString()

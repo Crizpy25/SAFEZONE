@@ -20,6 +20,15 @@ function getCurrentUserID() {
     return sessionStorage.getItem('adminUserID');
 }
 
+function isLoginSessionStale(lastSeenValue, staleAfterMs = 24 * 60 * 60 * 1000) {
+    if (!lastSeenValue) return true;
+
+    const timestamp = new Date(lastSeenValue).getTime();
+    if (Number.isNaN(timestamp)) return true;
+
+    return Date.now() - timestamp > staleAfterMs;
+}
+
 function clearLocalAuthState() {
     const sessionKeys = [
         'adminLoggedIn',
@@ -49,21 +58,30 @@ function clearLocalAuthState() {
     localStorage.removeItem('skipPeerCleanup');
 }
 
-async function resetAdminOnlineStatus(userID) {
-    if (!userID || !db) return;
+async function setAdminLoginState(userID, loggedIn) {
+    if (!userID || !db) return false;
 
-    const { error } = await db
+    const now = new Date().toISOString();
+    const { error, data } = await db
         .from('admins')
         .update({
-            is_online: false,
-            call_status: 'offline',
-            peer_id: null,
-            last_seen: new Date().toISOString(),
-            last_login: new Date().toISOString()
+            is_online: Boolean(loggedIn),
+            is_logged_in: Boolean(loggedIn),
+            call_status: loggedIn ? 'available' : 'offline',
+            peer_id: loggedIn ? null : null,
+            last_seen: now,
+            ...(loggedIn ? { last_login: now } : {})
         })
-        .eq('id', userID);
+        .eq('id', userID)
+        .select('id, is_online, is_logged_in')
+        .maybeSingle();
 
     if (error) throw error;
+    return Boolean(data);
+}
+
+async function resetAdminOnlineStatus(userID) {
+    return setAdminLoginState(userID, false);
 }
 
 function parseSupabaseTimestamp(value) {
@@ -144,6 +162,7 @@ async function handleRegister(event) {
                 username,
                 password,
                 is_online: false,
+                is_logged_in: false,
                 created_at: new Date().toISOString()
             }
         ]).select();
@@ -190,7 +209,7 @@ async function handleLogin(event) {
     try {
         const { data, error } = await db
             .from('admins')
-            .select('id, username, fullname, email, is_online')
+            .select('id, username, fullname, email, is_online, is_logged_in, last_seen, last_login')
             .eq('username', username)
             .eq('password', password)
             .single();
@@ -202,21 +221,43 @@ async function handleLogin(event) {
             return;
         }
 
-        if (data.is_online === true) {
-            if (errorMessage) {
-                errorMessage.textContent = 'This admin account is already logged in';
-                errorMessage.classList.remove('hidden');
+        const lastLoginStamp = data.last_seen || data.last_login;
+        if (data.is_online === true || data.is_logged_in === true) {
+            if (!isLoginSessionStale(lastLoginStamp)) {
+                if (errorMessage) {
+                    errorMessage.textContent = 'This admin account is already logged in';
+                    errorMessage.classList.remove('hidden');
+                }
+                const passwordInput = document.getElementById('password');
+                if (passwordInput) passwordInput.value = '';
+                return;
             }
-            const passwordInput = document.getElementById('password');
-            if (passwordInput) passwordInput.value = '';
-            return;
+
+            const { error: staleSessionError } = await db
+                .from('admins')
+                .update({
+                    is_online: false,
+                    is_logged_in: false,
+                    call_status: 'offline',
+                    peer_id: null,
+                    last_seen: new Date().toISOString()
+                })
+                .eq('id', data.id);
+
+            if (staleSessionError) throw staleSessionError;
         }
 
         const { data: claimedAdmin, error: claimError } = await db
             .from('admins')
-            .update({ is_online: true, last_login: new Date().toISOString() })
+            .update({
+                is_online: true,
+                is_logged_in: true,
+                last_login: new Date().toISOString(),
+                last_seen: new Date().toISOString()
+            })
             .eq('id', data.id)
             .eq('is_online', false)
+            .eq('is_logged_in', false)
             .select('id')
             .maybeSingle();
 
